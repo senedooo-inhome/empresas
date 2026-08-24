@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getEnv, getSupabase, json, readJson, serverError, type AuthUser } from '../_core';
+import { getEnv, getSupabase, json, readJson, serverError, type AuthUser } from '../_core.js';
 
 export default async function handler(request: Request) {
     if (request.method !== 'POST') return json({ error: 'Método não permitido' }, 405, { Allow: 'POST' });

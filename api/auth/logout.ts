@@ -1,4 +1,4 @@
-import { json } from '../_core';
+import { json } from '../_core.js';
 export default async function handler(request: Request) {
     if (request.method !== 'POST') return json({ error: 'Método não permitido' }, 405, { Allow: 'POST' });
     return new Response(null, {

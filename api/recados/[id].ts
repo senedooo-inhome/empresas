@@ -1,4 +1,4 @@
-import { authOrResponse, getSupabase, json, mapRecado, pathSegment, readJson, serverError } from '../_core';
+import { authOrResponse, getSupabase, json, mapRecado, pathSegment, readJson, serverError } from '../_core.js';
 
 export default async function handler(request: Request) {
     try {
