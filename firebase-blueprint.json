@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role-based access control",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["supervisao", "agente"] },
+        "nome": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "Empresa": {
+      "title": "Empresa",
+      "description": "Empresa atendida no portal operacional",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "nicho": { "type": "string" },
+        "segmento": { "type": "string" },
+        "link_sistema": { "type": "string" },
+        "resumo": { "type": "string" },
+        "logo_url": { "type": "string" },
+        "ativo": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["nome", "nicho", "segmento", "link_sistema", "resumo", "ativo"]
+    },
+    "Recado": {
+      "title": "Recado",
+      "description": "Recado do dia e histórico de comunicados",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "empresa_id": { "type": "string" },
+        "data_recado": { "type": "string" },
+        "mensagem": { "type": "string" },
+        "criado_por": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["empresa_id", "data_recado", "mensagem", "criado_por"]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles containing role and info"
+    },
+    "/empresas/{empresaId}": {
+      "schema": "Empresa",
+      "description": "Empresas cadastradas no portal"
+    },
+    "/recados/{recadoId}": {
+      "schema": "Recado",
+      "description": "Recados operacionais cadastrados por empresa e data"
+    }
+  }
+}
