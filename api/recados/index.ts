@@ -1,6 +1,6 @@
-import { authOrResponse, getSupabase, json, mapRecado, readJson, serverError } from '../_core.js';
+import { authOrResponse, getSupabase, json, mapRecado, nodeHandler, readJson, serverError } from '../_core.js';
 
-export default async function handler(request: Request) {
+export default nodeHandler(async function handler(request: Request) {
     try {
       const supabase = getSupabase();
       const url = new URL(request.url);
@@ -45,4 +45,4 @@ export default async function handler(request: Request) {
     } catch (error) {
       return serverError(error, 'recados');
     }
-}
+});

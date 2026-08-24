@@ -4,6 +4,66 @@ import { createClient } from '@supabase/supabase-js';
 export type Role = 'supervisao' | 'agente';
 export type AuthUser = { id: string; email: string; nome: string; role: Role };
 
+type NodeRequest = {
+  method?: string;
+  url?: string;
+  headers: Record<string, string | string[] | undefined>;
+  body?: unknown;
+};
+
+type NodeResponse = {
+  statusCode: number;
+  setHeader(name: string, value: string | string[]): void;
+  end(body?: Uint8Array): void;
+};
+
+function toWebRequest(request: NodeRequest): Request {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(request.headers || {})) {
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(name, item);
+    } else if (value !== undefined) {
+      headers.set(name, value);
+    }
+  }
+
+  const protocol = headers.get('x-forwarded-proto') || 'https';
+  const host = headers.get('x-forwarded-host') || headers.get('host') || 'localhost';
+  const url = new URL(request.url || '/', `${protocol}://${host}`).toString();
+  const method = request.method || 'GET';
+  const init: RequestInit = { method, headers };
+
+  if (method !== 'GET' && method !== 'HEAD' && request.body !== undefined) {
+    if (typeof request.body === 'string' || request.body instanceof Uint8Array) {
+      init.body = request.body;
+    } else {
+      init.body = JSON.stringify(request.body);
+      if (!headers.has('content-type')) headers.set('content-type', 'application/json');
+    }
+  }
+
+  return new Request(url, init);
+}
+
+async function sendWebResponse(response: Response, target: NodeResponse) {
+  target.statusCode = response.status;
+  response.headers.forEach((value, name) => target.setHeader(name, value));
+  const body = new Uint8Array(await response.arrayBuffer());
+  target.end(body.length ? body : undefined);
+}
+
+export function nodeHandler(
+  handler: (request: Request) => Response | Promise<Response>,
+) {
+  return async (request: NodeRequest, response: NodeResponse) => {
+    try {
+      await sendWebResponse(await handler(toWebRequest(request)), response);
+    } catch (error) {
+      await sendWebResponse(serverError(error, 'vercel/adapter'), response);
+    }
+  };
+}
+
 export function json(data: unknown, status = 200, headers: HeadersInit = {}) {
   return Response.json(data, { status, headers });
 }

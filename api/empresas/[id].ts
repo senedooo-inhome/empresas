@@ -1,6 +1,6 @@
-import { authOrResponse, getSupabase, json, mapEmpresa, pathSegment, readJson, serverError } from '../_core.js';
+import { authOrResponse, getSupabase, json, mapEmpresa, nodeHandler, pathSegment, readJson, serverError } from '../_core.js';
 
-export default async function handler(request: Request) {
+export default nodeHandler(async function handler(request: Request) {
     try {
       const id = pathSegment(request, '/api/empresas/');
       if (!id) return json({ error: 'ID da empresa não informado.' }, 400);
@@ -43,4 +43,4 @@ export default async function handler(request: Request) {
     } catch (error) {
       return serverError(error, 'empresas/id');
     }
-}
+});

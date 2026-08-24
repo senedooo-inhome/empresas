@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getEnv, getSupabase, json, readJson, serverError, type AuthUser } from '../_core.js';
+import { getEnv, getSupabase, json, nodeHandler, readJson, serverError, type AuthUser } from '../_core.js';
 
-export default async function handler(request: Request) {
+export default nodeHandler(async function handler(request: Request) {
     if (request.method !== 'POST') return json({ error: 'Método não permitido' }, 405, { Allow: 'POST' });
     try {
       const body = await readJson(request);
@@ -39,4 +39,4 @@ export default async function handler(request: Request) {
     } catch (error) {
       return serverError(error, 'auth/login');
     }
-}
+});
