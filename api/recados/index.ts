@@ -1,48 +1,50 @@
-import { getSupabase, handleServerError, mapRecado, requireAuth, requireSupervisor } from '../../serverless/core';
+import { authOrResponse, getSupabase, json, mapRecado, readJson, serverError } from '../_core';
 
-export default async function handler(req: any, res: any) {
-  try {
-    const supabase = getSupabase();
+export default {
+  async fetch(request: Request) {
+    try {
+      const supabase = getSupabase();
+      const url = new URL(request.url);
 
-    if (req.method === 'GET') {
-      if (!requireAuth(req, res)) return;
-      let query = supabase.from('recados').select('*').order('data_recado', { ascending: false }).order('created_at', { ascending: false });
-      if (req.query?.empresa_id) query = query.eq('empresa_id', String(req.query.empresa_id));
-      if (req.query?.data_recado) query = query.eq('data_recado', String(req.query.data_recado));
-      const { data, error } = await query;
-      if (error) return res.status(500).json({ error: 'Não foi possível consultar os recados.' });
-      return res.status(200).json((data || []).map(mapRecado));
-    }
-
-    if (req.method === 'POST') {
-      const user = requireSupervisor(req, res);
-      if (!user) return;
-      const empresaId = String(req.body?.empresa_id || '');
-      const { data: empresa } = await supabase.from('empresas').select('id, nome').eq('id', empresaId).maybeSingle();
-      if (!empresa) return res.status(400).json({ error: 'Empresa inválida' });
-
-      const payload = {
-        empresa_id: empresaId,
-        empresa_nome: empresa.nome,
-        data_recado: String(req.body?.data_recado || ''),
-        mensagem: String(req.body?.mensagem || '').trim(),
-        criado_por: String(req.body?.criado_por || user.id),
-        criado_por_email: user.email,
-      };
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.data_recado) || !payload.mensagem) {
-        return res.status(400).json({ error: 'Data e mensagem do recado são obrigatórias.' });
+      if (request.method === 'GET') {
+        const auth = authOrResponse(request);
+        if (auth.response) return auth.response;
+        let query = supabase.from('recados').select('*').order('data_recado', { ascending: false }).order('created_at', { ascending: false });
+        const empresaId = url.searchParams.get('empresa_id');
+        const dataRecado = url.searchParams.get('data_recado');
+        if (empresaId) query = query.eq('empresa_id', empresaId);
+        if (dataRecado) query = query.eq('data_recado', dataRecado);
+        const { data, error } = await query;
+        if (error) return json({ error: 'Não foi possível consultar os recados.', details: error.message }, 500);
+        return json((data || []).map(mapRecado));
       }
-      const { data, error } = await supabase.from('recados').insert(payload).select('*').single();
-      if (error) {
-        console.error('[recados POST] Supabase:', error);
-        return res.status(500).json({ error: 'Não foi possível salvar o recado.' });
-      }
-      return res.status(201).json(mapRecado(data));
-    }
 
-    res.setHeader('Allow', 'GET, POST');
-    return res.status(405).json({ error: 'Método não permitido' });
-  } catch (error) {
-    return handleServerError(res, error, 'recados');
-  }
-}
+      if (request.method === 'POST') {
+        const auth = authOrResponse(request, true);
+        if (auth.response || !auth.user) return auth.response!;
+        const body = await readJson(request);
+        const empresaId = String(body?.empresa_id || '');
+        const { data: empresa } = await supabase.from('empresas').select('id, nome').eq('id', empresaId).maybeSingle();
+        if (!empresa) return json({ error: 'Empresa inválida' }, 400);
+        const payload = {
+          empresa_id: empresaId,
+          empresa_nome: empresa.nome,
+          data_recado: String(body?.data_recado || ''),
+          mensagem: String(body?.mensagem || '').trim(),
+          criado_por: String(body?.criado_por || auth.user.id),
+          criado_por_email: auth.user.email,
+        };
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.data_recado) || !payload.mensagem) {
+          return json({ error: 'Data e mensagem do recado são obrigatórias.' }, 400);
+        }
+        const { data, error } = await supabase.from('recados').insert(payload).select('*').single();
+        if (error) return json({ error: 'Não foi possível salvar o recado.', details: error.message }, 500);
+        return json(mapRecado(data), 201);
+      }
+
+      return json({ error: 'Método não permitido' }, 405, { Allow: 'GET, POST' });
+    } catch (error) {
+      return serverError(error, 'recados');
+    }
+  },
+};

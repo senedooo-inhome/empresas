@@ -1,3 +1,12 @@
-export default async function handler(_req: any, res: any) {
-  return res.status(200).json({ status: 'ok', service: 'Sonax In Home API' });
-}
+import { getEnv, json, serverError } from './_core';
+export default {
+  async fetch(request: Request) {
+    if (request.method !== 'GET') return json({ error: 'Método não permitido' }, 405);
+    try {
+      const { supabaseUrl } = getEnv();
+      return json({ ok: true, supabaseConfigured: Boolean(supabaseUrl), jwtConfigured: true });
+    } catch (error) {
+      return serverError(error, 'teste');
+    }
+  },
+};

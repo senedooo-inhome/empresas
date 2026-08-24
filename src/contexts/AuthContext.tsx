@@ -57,11 +57,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return profile;
     } catch (err: any) {
       console.error('[Auth error]', err);
-      let msg = 'E-mail ou senha inválidos.';
-      if (err.message && (err.message.includes('não autorizado') || err.message.includes('sem perfil'))) {
+      let msg = err?.message || 'Não foi possível fazer login.';
+      if (err?.status === 401) {
+        msg = 'E-mail ou senha inválidos.';
+      } else if (err?.status === 403) {
         msg = 'Usuário não autorizado para acessar este sistema.';
-      } else if (err.message && err.message.includes('E-mail e senha')) {
-        msg = err.message;
+      } else if (err?.status >= 500) {
+        msg = `Erro do servidor: ${err.message || 'verifique a configuração da Vercel.'}`;
       }
       setError(msg);
       throw new Error(msg);

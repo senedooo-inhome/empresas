@@ -1,6 +1,9 @@
-node_modules
-dist
-.vite
-.env
-.env.local
-.vercel
+node_modules/
+.local-data.json
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
