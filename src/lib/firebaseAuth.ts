@@ -25,14 +25,16 @@ export async function loginWithBackend(email: string, pass: string): Promise<Use
 
 // Logout interno via Backend
 export async function logoutBackend(): Promise<void> {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('sonax_token');
-    localStorage.removeItem('sonax_user');
+  try {
+    await apiRequest('/api/auth/logout', {
+      method: 'POST',
+    });
+  } finally {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('sonax_token');
+      localStorage.removeItem('sonax_user');
+    }
   }
-
-  await apiRequest('/api/auth/logout', {
-    method: 'POST',
-  });
 }
 
 // Obter usuário da sessão ativa

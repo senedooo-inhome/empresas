@@ -17,9 +17,12 @@ export async function apiRequest<T = any>(
   const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
+
+  if (options.body && !headers['Content-Type'] && !headers['content-type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   // Se houver token JWT salvo localmente, envia no cabeçalho Authorization
   // garantindo compatibilidade total mesmo em ambientes com iframe ou cookies restritos
