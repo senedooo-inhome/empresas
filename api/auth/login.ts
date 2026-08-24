@@ -2,8 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getEnv, getSupabase, json, readJson, serverError, type AuthUser } from '../_core';
 
-export default {
-  async fetch(request: Request) {
+export default async function handler(request: Request) {
     if (request.method !== 'POST') return json({ error: 'Método não permitido' }, 405, { Allow: 'POST' });
     try {
       const body = await readJson(request);
@@ -40,5 +39,4 @@ export default {
     } catch (error) {
       return serverError(error, 'auth/login');
     }
-  },
-};
+}

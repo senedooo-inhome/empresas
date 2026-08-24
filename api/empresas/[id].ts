@@ -1,7 +1,6 @@
 import { authOrResponse, getSupabase, json, mapEmpresa, pathSegment, readJson, serverError } from '../_core';
 
-export default {
-  async fetch(request: Request) {
+export default async function handler(request: Request) {
     try {
       const id = pathSegment(request, '/api/empresas/');
       if (!id) return json({ error: 'ID da empresa não informado.' }, 400);
@@ -44,5 +43,4 @@ export default {
     } catch (error) {
       return serverError(error, 'empresas/id');
     }
-  },
-};
+}

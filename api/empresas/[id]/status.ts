@@ -1,7 +1,6 @@
 import { authOrResponse, getSupabase, json, mapEmpresa, pathSegment, readJson, serverError } from '../../_core';
 
-export default {
-  async fetch(request: Request) {
+export default async function handler(request: Request) {
     if (request.method !== 'PATCH') return json({ error: 'Método não permitido' }, 405, { Allow: 'PATCH' });
     try {
       const auth = authOrResponse(request, true);
@@ -16,5 +15,4 @@ export default {
     } catch (error) {
       return serverError(error, 'empresas/status');
     }
-  },
-};
+}

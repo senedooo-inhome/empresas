@@ -1,7 +1,6 @@
 import { authOrResponse, getSupabase, json, mapRecado, pathSegment, readJson, serverError } from '../_core';
 
-export default {
-  async fetch(request: Request) {
+export default async function handler(request: Request) {
     try {
       const auth = authOrResponse(request, true);
       if (auth.response || !auth.user) return auth.response!;
@@ -39,5 +38,4 @@ export default {
     } catch (error) {
       return serverError(error, 'recados/id');
     }
-  },
-};
+}

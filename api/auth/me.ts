@@ -1,7 +1,6 @@
 import { authenticate, getEnv, json, serverError } from '../_core';
 
-export default {
-  async fetch(request: Request) {
+export default async function handler(request: Request) {
     if (request.method !== 'GET') return json({ error: 'Método não permitido' }, 405, { Allow: 'GET' });
     try {
       getEnv();
@@ -11,5 +10,4 @@ export default {
     } catch (error) {
       return serverError(error, 'auth/me');
     }
-  },
-};
+}

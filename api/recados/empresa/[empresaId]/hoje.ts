@@ -1,7 +1,6 @@
 import { authOrResponse, getSupabase, json, mapRecado, pathSegment, serverError } from '../../../_core';
 
-export default {
-  async fetch(request: Request) {
+export default async function handler(request: Request) {
     if (request.method !== 'GET') return json({ error: 'Método não permitido' }, 405, { Allow: 'GET' });
     try {
       const auth = authOrResponse(request);
@@ -17,5 +16,4 @@ export default {
     } catch (error) {
       return serverError(error, 'recados/empresa/hoje');
     }
-  },
-};
+}
