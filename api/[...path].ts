@@ -8,4 +8,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 app.use('/api', apiRoutes);
 
-export default app;
+export default function handler(req: any, res: any) {
+  return app(req, res);
+}
