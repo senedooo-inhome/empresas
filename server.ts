@@ -24,7 +24,7 @@ async function startServer() {
       status: 'ok',
       service: 'Sonax In Home — Portal Operacional',
       database: 'Local backend data store',
-      auth: 'Internal Backend Auth (bcrypt + HttpOnly Cookie)',
+      auth: 'Supabase Authentication + HttpOnly Cookie',
       fusoHorario: 'America/Sao_Paulo',
       timestamp: new Date().toISOString(),
     });

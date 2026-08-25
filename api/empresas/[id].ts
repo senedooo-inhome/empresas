@@ -1,4 +1,4 @@
-import { authOrResponse, getSupabase, json, mapEmpresa, nodeHandler, pathSegment, readJson, serverError } from '../_core.js';
+import { authOrResponse, getSupabase, json, mapEmpresa, nodeHandler, normalizeLinksSistema, pathSegment, readJson, serverError } from '../_core.js';
 
 export default nodeHandler(async function handler(request: Request) {
     try {
@@ -22,6 +22,12 @@ export default nodeHandler(async function handler(request: Request) {
         const changes: any = {};
         for (const key of ['nome', 'nicho', 'segmento', 'link_sistema', 'resumo', 'logo_url', 'ativo']) {
           if (body?.[key] !== undefined) changes[key] = body[key];
+        }
+        if (body?.links_sistema !== undefined) {
+          const linksSistema = normalizeLinksSistema(body.links_sistema, body.link_sistema);
+          if (!linksSistema.length) return json({ error: 'Informe pelo menos um link de sistema.' }, 400);
+          changes.links_sistema = linksSistema;
+          changes.link_sistema = linksSistema[0].url;
         }
         const { data, error } = await supabase.from('empresas').update(changes).eq('id', id).select('*').maybeSingle();
         if (error) return json({ error: 'Não foi possível atualizar a empresa.', details: error.message }, 500);

@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@keyframes recado-alerta-piscar {
+  0%, 100% { opacity: 1; transform: scale(1); text-shadow: 0 0 0 rgba(220, 38, 38, 0); }
+  50% { opacity: 0.55; transform: scale(1.025); text-shadow: 0 0 12px rgba(220, 38, 38, 0.45); }
+}
+
+.recado-do-dia-alerta {
+  display: inline-block;
+  animation: recado-alerta-piscar 1.15s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recado-do-dia-alerta { animation: none; }
+}

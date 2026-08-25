@@ -1,4 +1,4 @@
-import { authOrResponse, getSupabase, json, mapEmpresa, nodeHandler, readJson, serverError } from '../_core.js';
+import { authOrResponse, getSupabase, json, mapEmpresa, nodeHandler, normalizeLinksSistema, readJson, serverError } from '../_core.js';
 
 export default nodeHandler(async function handler(request: Request) {
     try {
@@ -19,11 +19,13 @@ export default nodeHandler(async function handler(request: Request) {
         const auth = authOrResponse(request, true);
         if (auth.response) return auth.response;
         const body = await readJson(request);
+        const linksSistema = normalizeLinksSistema(body?.links_sistema, body?.link_sistema);
         const payload = {
           nome: String(body?.nome || '').trim(),
           nicho: String(body?.nicho || '').trim(),
           segmento: String(body?.segmento || '').trim(),
-          link_sistema: String(body?.link_sistema || '').trim(),
+          link_sistema: linksSistema[0]?.url || '',
+          links_sistema: linksSistema,
           resumo: String(body?.resumo || '').trim(),
           logo_url: String(body?.logo_url || '').trim(),
           ativo: body?.ativo ?? true,

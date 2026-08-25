@@ -15,7 +15,7 @@ import {
   Check,
   Filter,
 } from 'lucide-react';
-import { Empresa } from '../../types';
+import { Empresa, SistemaLink } from '../../types';
 import {
   subscribeEmpresas,
   createEmpresa,
@@ -25,6 +25,7 @@ import {
 import { EmpresaFormModal } from './EmpresaFormModal';
 import { EmpresaDetailsModal } from './EmpresaDetailsModal';
 import { EmpresaDeleteModal } from './EmpresaDeleteModal';
+import { getEmpresaLinks } from '../../lib/empresaLinks';
 
 export const EmpresasAdmin: React.FC = () => {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -116,6 +117,7 @@ export const EmpresasAdmin: React.FC = () => {
     nicho: string;
     segmento: string;
     link_sistema: string;
+    links_sistema: SistemaLink[];
     resumo: string;
     logo_url: string;
   }) => {
@@ -357,13 +359,16 @@ export const EmpresasAdmin: React.FC = () => {
                       </div>
                       <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                         <a
-                          href={empresa.link_sistema}
+                          href={getEmpresaLinks(empresa)[0]?.url || '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="hover:text-sky-600 inline-flex items-center gap-0.5 truncate max-w-[200px]"
-                          title={empresa.link_sistema}
+                          title={getEmpresaLinks(empresa)[0]?.url}
                         >
-                          <span>{empresa.link_sistema}</span>
+                          <span>{getEmpresaLinks(empresa)[0]?.nome || 'Sem link'}</span>
+                          {getEmpresaLinks(empresa).length > 1 && (
+                            <span className="font-semibold text-sky-600">+{getEmpresaLinks(empresa).length - 1}</span>
+                          )}
                           <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                         </a>
                       </div>

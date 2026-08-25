@@ -11,6 +11,7 @@ import {
 import { Empresa, Recado } from '../../types';
 import { formatDataBr, getRecadoStatus } from '../../lib/dateUtils';
 import { getTodaySaoPaulo } from '../../lib/firebase';
+import { getEmpresaLinks } from '../../lib/empresaLinks';
 
 interface RecadoDetailsModalProps {
   isOpen: boolean;
@@ -152,16 +153,16 @@ export const RecadoDetailsModal: React.FC<RecadoDetailsModalProps> = ({
                   {empresa.nome} • {empresa.nicho} ({empresa.segmento})
                 </span>
                 <span className="text-[10px] text-slate-400 truncate max-w-xs block">
-                  {empresa.link_sistema}
+                  {getEmpresaLinks(empresa).length} sistema(s) cadastrado(s)
                 </span>
               </div>
               <a
-                href={empresa.link_sistema}
+                href={getEmpresaLinks(empresa)[0]?.url || '#'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-100 text-sky-700 border border-slate-200 rounded-md font-semibold text-[11px] shrink-0 transition-colors shadow-2xs"
               >
-                <span>Acessar Link</span>
+                <span>Acessar principal</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>

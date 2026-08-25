@@ -71,11 +71,13 @@ export function json(data: unknown, status = 200, headers: HeadersInit = {}) {
 export function getEnv() {
   const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/rest\/v1\/?$/, '');
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
   const jwtSecret = process.env.JWT_SECRET;
 
   const missing: string[] = [];
   if (!supabaseUrl) missing.push('SUPABASE_URL');
   if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  if (!anonKey) missing.push('SUPABASE_ANON_KEY');
   if (!jwtSecret) missing.push('JWT_SECRET');
 
   if (missing.length) {
@@ -84,9 +86,10 @@ export function getEnv() {
     throw error;
   }
 
-  return { supabaseUrl, serviceKey, jwtSecret } as {
+  return { supabaseUrl, serviceKey, anonKey, jwtSecret } as {
     supabaseUrl: string;
     serviceKey: string;
+    anonKey: string;
     jwtSecret: string;
   };
 }
@@ -95,6 +98,13 @@ export function getSupabase() {
   const { supabaseUrl, serviceKey } = getEnv();
   return createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+export function getSupabaseAuth() {
+  const { supabaseUrl, anonKey } = getEnv();
+  return createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 }
 
@@ -160,11 +170,36 @@ export function pathSegment(request: Request, marker: string): string {
 
 export function mapEmpresa(row: any) {
   if (!row) return row;
+  const linksSistema = normalizeLinksSistema(row.links_sistema, row.link_sistema);
   return {
     id: row.id, nome: row.nome, nicho: row.nicho, segmento: row.segmento,
-    link_sistema: row.link_sistema, resumo: row.resumo, logo_url: row.logo_url,
+    link_sistema: linksSistema[0]?.url || row.link_sistema || '', links_sistema: linksSistema,
+    resumo: row.resumo, logo_url: row.logo_url,
     ativo: row.ativo, createdAt: row.created_at, updatedAt: row.updated_at,
   };
+}
+
+export function normalizeLinksSistema(value: unknown, legacyLink = '') {
+  const isHttpUrl = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+  const normalized = Array.isArray(value)
+    ? value
+        .map((item: any) => ({
+          nome: String(item?.nome || 'Sistema').trim(),
+          url: String(item?.url || '').trim(),
+        }))
+        .filter((item) => item.nome && isHttpUrl(item.url))
+    : [];
+
+  if (normalized.length) return normalized;
+  const url = String(legacyLink || '').trim();
+  return isHttpUrl(url) ? [{ nome: 'Sistema principal', url }] : [];
 }
 
 export function mapRecado(row: any) {

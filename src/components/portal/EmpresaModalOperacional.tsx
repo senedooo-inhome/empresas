@@ -12,6 +12,7 @@ import { Empresa, Recado } from '../../types';
 import { subscribeRecadosEmpresaHoje } from '../../lib/firestoreService';
 import { useTodaySaoPaulo } from '../../lib/useTodaySaoPaulo';
 import { formatDataBr } from '../../lib/dateUtils';
+import { getEmpresaLinks } from '../../lib/empresaLinks';
 
 interface EmpresaModalOperacionalProps {
   empresa: Empresa | null;
@@ -125,31 +126,32 @@ export const EmpresaModalOperacional: React.FC<EmpresaModalOperacionalProps> = (
 
         {/* Corpo do Modal com Scroll */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1">
-          {/* Botão de Destaque: Link do Sistema da Empresa */}
-          {empresa.link_sistema ? (
-            <div className="bg-[#00709e] rounded-xl p-4 sm:p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
+          {/* Botões de Destaque: Sistemas da Empresa */}
+          {getEmpresaLinks(empresa).length ? (
+            <div className="bg-[#00709e] rounded-xl p-4 sm:p-5 text-white shadow-md">
               <div className="min-w-0">
                 <span className="text-[10px] font-bold text-sky-200 uppercase tracking-wider block">
                   Acesso Operacional
                 </span>
                 <h3 className="text-sm font-bold text-white mt-0.5">
-                  Sistema de Atendimento
+                  Sistemas de Atendimento
                 </h3>
-                <p className="text-xs text-sky-100/90 truncate mt-0.5 max-w-md">
-                  {empresa.link_sistema}
-                </p>
               </div>
-
-              <a
-                href={empresa.link_sistema}
-                target="_blank"
-                rel="noopener noreferrer"
-                id="btn-acessar-sistema-empresa-popup"
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white hover:bg-sky-50 active:bg-sky-100 text-[#00709e] font-extrabold text-xs rounded-lg transition-colors shadow-sm cursor-pointer shrink-0 uppercase tracking-wide"
-              >
-                <span>ACESSAR SISTEMA DA EMPRESA</span>
-                <ExternalLink className="w-4 h-4 text-[#00709e] stroke-[2.5]" />
-              </a>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {getEmpresaLinks(empresa).map((link, index) => (
+                  <a
+                    key={`${link.url}-${index}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    id={index === 0 ? 'btn-acessar-sistema-empresa-popup' : undefined}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-sky-50 active:bg-sky-100 text-[#00709e] font-extrabold text-xs rounded-lg transition-colors shadow-sm cursor-pointer uppercase tracking-wide"
+                  >
+                    <span>{link.nome}</span>
+                    <ExternalLink className="w-4 h-4 stroke-[2.5]" />
+                  </a>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex items-center gap-2">
@@ -161,7 +163,7 @@ export const EmpresaModalOperacional: React.FC<EmpresaModalOperacionalProps> = (
           {/* Seção: Recado do Dia */}
           <div className="space-y-2" id="secao-recados-do-dia-modal">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <span className={`text-[11px] font-black uppercase tracking-wider ${recadosHoje.length ? 'recado-do-dia-alerta text-red-600' : 'text-slate-500'}`}>
                 Recado do Dia
               </span>
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-md">

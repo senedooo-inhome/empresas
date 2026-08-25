@@ -3,13 +3,12 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 type Role = 'supervisao' | 'agente';
 type User = { id: string; email: string; nome: string; role: Role };
-type Empresa = { id: string; nome: string; nicho: string; segmento: string; link_sistema: string; resumo: string; logo_url: string; ativo: boolean; createdAt: string; updatedAt: string };
+type Empresa = { id: string; nome: string; nicho: string; segmento: string; link_sistema: string; links_sistema?: Array<{ nome: string; url: string }>; resumo: string; logo_url: string; ativo: boolean; createdAt: string; updatedAt: string };
 type Recado = { id: string; empresa_id: string; data_recado: string; mensagem: string; criado_por: string; createdAt: string; updatedAt: string };
 type Store = { empresas: Empresa[]; recados: Recado[] };
 
@@ -20,8 +19,14 @@ const dataPath = path.join(process.cwd(), '.local-data.json');
 const jwtSecret = process.env.JWT_SECRET || 'sonax-local-development-secret';
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/rest\/v1\/?$/, '');
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
 const supabase = supabaseUrl && supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } })
+  : null;
+const supabaseAuth = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    })
   : null;
 const users: (User & { password?: string })[] = [
   { id: process.env.ADMIN_ID || 'supervisao', email: (process.env.ADMIN_EMAIL || 'supervisao@sonax.net.br').toLowerCase(), nome: process.env.ADMIN_NOME || 'Supervisão', role: 'supervisao', password: process.env.ADMIN_PASSWORD },
@@ -50,16 +55,23 @@ router.post('/auth/login', async (req, res) => {
   let user: User | null = null;
 
   if (supabase) {
+    if (!supabaseAuth) {
+      return res.status(500).json({ error: 'Configuração incompleta: SUPABASE_ANON_KEY.' });
+    }
+    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({ email, password });
+    if (authError || !authData.user) {
+      console.warn('[auth/login local] Supabase Auth recusou o login:', authError?.message);
+      return res.status(401).json({ error: 'Usuário ou senha inválidos' });
+    }
+
     const { data, error } = await supabase
       .from('usuarios')
-      .select('id, email, nome, role, password_hash')
+      .select('id, email, nome, role')
       .eq('email', email)
       .maybeSingle();
     if (error) return res.status(500).json({ error: 'Não foi possível consultar os usuários.' });
-    if (!data || !(await bcrypt.compare(password, data.password_hash))) {
-      return res.status(401).json({ error: 'Usuário ou senha inválidos' });
-    }
-    user = { id: data.id, email: data.email, nome: data.nome, role: data.role as Role };
+    if (!data) return res.status(403).json({ error: 'Perfil do usuário não cadastrado na tabela usuarios.' });
+    user = { id: authData.user.id, email: data.email, nome: data.nome, role: data.role as Role };
   } else {
     const found = users.find((candidate) => candidate.email === email);
     if (!found || !found.password || password !== found.password) return res.status(401).json({ error: 'Usuário ou senha inválidos' });

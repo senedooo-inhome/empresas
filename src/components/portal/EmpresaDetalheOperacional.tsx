@@ -17,6 +17,7 @@ import {
 import { useTodaySaoPaulo } from '../../lib/useTodaySaoPaulo';
 import { formatDataBr } from '../../lib/dateUtils';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { getEmpresaLinks } from '../../lib/empresaLinks';
 
 interface EmpresaDetalheOperacionalProps {
   empresaId: string;
@@ -97,6 +98,8 @@ export const EmpresaDetalheOperacional: React.FC<EmpresaDetalheOperacionalProps>
     );
   }
 
+  const linksSistema = getEmpresaLinks(empresa);
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto" id="empresa-detalhe-operacional">
       {/* Botão Voltar */}
@@ -152,18 +155,21 @@ export const EmpresaDetalheOperacional: React.FC<EmpresaDetalheOperacionalProps>
             </div>
           </div>
 
-          {/* Botão ACESSAR SISTEMA DA EMPRESA */}
-          <div className="shrink-0">
-            <a
-              href={empresa.link_sistema}
-              target="_blank"
-              rel="noopener noreferrer"
-              id="btn-acessar-sistema-empresa"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#0f2b48] hover:bg-[#1a416a] text-white font-bold text-xs rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
-            >
-              <span>ACESSAR SISTEMA DA EMPRESA</span>
-              <ExternalLink className="w-4 h-4 text-sky-400" />
-            </a>
+          {/* Botões de acesso aos sistemas da empresa */}
+          <div className="shrink-0 flex flex-col gap-2 w-full sm:w-auto">
+            {linksSistema.map((link, index) => (
+              <a
+                key={`${link.url}-${index}`}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                id={index === 0 ? 'btn-acessar-sistema-empresa' : undefined}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#0f2b48] hover:bg-[#1a416a] text-white font-bold text-xs rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
+              >
+                <span>{link.nome.toUpperCase()}</span>
+                <ExternalLink className="w-4 h-4 text-sky-400" />
+              </a>
+            ))}
           </div>
         </div>
 
@@ -203,7 +209,7 @@ export const EmpresaDetalheOperacional: React.FC<EmpresaDetalheOperacionalProps>
                   <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-600 text-white">
                     ⚠ ATENÇÃO
                   </span>
-                  <h2 className="text-base sm:text-lg font-black text-amber-950 tracking-tight mt-0.5">
+                  <h2 className="recado-do-dia-alerta text-base sm:text-lg font-black text-red-700 tracking-tight mt-0.5">
                     {recadosHoje.length > 1
                       ? 'RECADOS DO DIA'
                       : 'RECADO DO DIA'}

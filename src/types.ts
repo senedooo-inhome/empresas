@@ -17,12 +17,18 @@ export interface UserProfile {
   nome: string;
 }
 
+export interface SistemaLink {
+  nome: string;
+  url: string;
+}
+
 export interface Empresa {
   id: string;
   nome: string;
   nicho: NichoEmpresa | string; // 'CLINICA' | 'SAC'
   segmento: string; // Informado de forma manual
   link_sistema: string;
+  links_sistema?: SistemaLink[];
   resumo: string;
   logo_url: string;
   ativo: boolean; // Suporte para exclusão lógica preservando histórico

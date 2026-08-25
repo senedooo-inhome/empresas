@@ -10,8 +10,10 @@ import {
   AlertCircle,
   Check,
   Plus,
+  Trash2,
 } from 'lucide-react';
-import { Empresa } from '../../types';
+import { Empresa, SistemaLink } from '../../types';
+import { getEmpresaLinks } from '../../lib/empresaLinks';
 import { uploadEmpresaLogo } from '../../lib/firestoreService';
 
 interface EmpresaFormModalProps {
@@ -22,6 +24,7 @@ interface EmpresaFormModalProps {
     nicho: string;
     segmento: string;
     link_sistema: string;
+    links_sistema: SistemaLink[];
     resumo: string;
     logo_url: string;
   }) => Promise<void>;
@@ -39,7 +42,9 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
   const [nome, setNome] = useState('');
   const [nicho, setNicho] = useState<'CLINICA' | 'SAC'>('CLINICA');
   const [segmento, setSegmento] = useState('');
-  const [linkSistema, setLinkSistema] = useState('');
+  const [linksSistema, setLinksSistema] = useState<SistemaLink[]>([
+    { nome: 'Sistema principal', url: '' },
+  ]);
   const [resumo, setResumo] = useState('');
   
   // Logo mode: 'url' | 'upload'
@@ -60,7 +65,8 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
       const currentNicho = (empresaToEdit.nicho || '').toUpperCase();
       setNicho(currentNicho === 'SAC' ? 'SAC' : 'CLINICA');
       setSegmento(empresaToEdit.segmento || '');
-      setLinkSistema(empresaToEdit.link_sistema || '');
+      const existingLinks = getEmpresaLinks(empresaToEdit);
+      setLinksSistema(existingLinks.length ? existingLinks : [{ nome: 'Sistema principal', url: '' }]);
       setResumo(empresaToEdit.resumo || '');
       setLogoUrl(empresaToEdit.logo_url || '');
       setLogoMode('url');
@@ -71,7 +77,7 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
       setNome('');
       setNicho('CLINICA');
       setSegmento('');
-      setLinkSistema('');
+      setLinksSistema([{ nome: 'Sistema principal', url: '' }]);
       setResumo('');
       setLogoUrl('');
       setLogoMode('url');
@@ -138,12 +144,16 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
       setErrorMsg('O segmento é obrigatório.');
       return;
     }
-    if (!linkSistema.trim()) {
-      setErrorMsg('O link do sistema é obrigatório.');
+    const normalizedLinks = linksSistema.map((item) => ({
+      nome: item.nome.trim(),
+      url: item.url.trim(),
+    }));
+    if (!normalizedLinks.length || normalizedLinks.some((item) => !item.nome || !item.url)) {
+      setErrorMsg('Preencha o nome e o endereço de todos os sistemas.');
       return;
     }
-    if (!validateUrl(linkSistema.trim())) {
-      setErrorMsg('Por favor, informe uma URL válida para o link do sistema (ex: https://sistema.empresa.com.br).');
+    if (normalizedLinks.some((item) => !validateUrl(item.url))) {
+      setErrorMsg('Informe URLs válidas para todos os sistemas (ex.: https://sistema.empresa.com.br).');
       return;
     }
     if (!resumo.trim()) {
@@ -182,7 +192,8 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
         nome: nome.trim(),
         nicho: nicho.trim(),
         segmento: segmento.trim(),
-        link_sistema: linkSistema.trim(),
+        link_sistema: normalizedLinks[0].url,
+        links_sistema: normalizedLinks,
         resumo: resumo.trim(),
         logo_url: finalLogoUrl,
       });
@@ -293,25 +304,66 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
             </div>
           </div>
 
-          {/* Link do Sistema */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">
-              Link do Sistema <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Globe className="w-3.5 h-3.5" />
+          {/* Links dos Sistemas */}
+          <div className="border border-slate-200 rounded-lg p-3.5 bg-slate-50/60 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <label className="block font-semibold text-slate-700">
+                  Links dos Sistemas <span className="text-red-500">*</span>
+                </label>
+                <p className="text-[10px] text-slate-500 mt-0.5">Adicione um botão para cada sistema utilizado pela empresa.</p>
               </div>
-              <input
-                type="url"
-                value={linkSistema}
-                onChange={(e) => setLinkSistema(e.target.value)}
-                placeholder="https://sistema.empresa.com.br"
+              <button
+                type="button"
+                onClick={() => setLinksSistema((items) => [...items, { nome: '', url: '' }])}
                 disabled={submitting}
-                className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 text-xs"
-                required
-              />
+                className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 font-semibold rounded-lg transition-colors disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Adicionar link
+              </button>
             </div>
+
+            {linksSistema.map((item, index) => (
+              <div key={index} className="grid grid-cols-1 sm:grid-cols-[0.8fr_1.4fr_auto] gap-2 items-end">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Nome do sistema</label>
+                  <input
+                    type="text"
+                    value={item.nome}
+                    onChange={(e) => setLinksSistema((items) => items.map((link, i) => i === index ? { ...link, nome: e.target.value } : link))}
+                    placeholder="Ex.: Painel principal"
+                    disabled={submitting}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 text-xs"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Endereço</label>
+                  <div className="relative">
+                    <Globe className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="url"
+                      value={item.url}
+                      onChange={(e) => setLinksSistema((items) => items.map((link, i) => i === index ? { ...link, url: e.target.value } : link))}
+                      placeholder="https://sistema.empresa.com.br"
+                      disabled={submitting}
+                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 text-xs"
+                      required
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLinksSistema((items) => items.filter((_, i) => i !== index))}
+                  disabled={submitting || linksSistema.length === 1}
+                  title="Remover link"
+                  className="h-[34px] w-[34px] inline-flex items-center justify-center border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
           </div>
 
           {/* Pequeno Resumo */}

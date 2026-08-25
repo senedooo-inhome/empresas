@@ -16,10 +16,11 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.usuarios (
     id TEXT PRIMARY KEY DEFAULT ('usr_' || substr(md5(random()::text || clock_timestamp()::text), 1, 16)),
+    auth_user_id UUID UNIQUE,
     email TEXT UNIQUE NOT NULL,
     nome TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('supervisao', 'agente')),
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -33,12 +34,19 @@ CREATE TABLE IF NOT EXISTS public.empresas (
     nicho TEXT NOT NULL DEFAULT 'SAC' CHECK (nicho IN ('CLINICA', 'SAC')),
     segmento TEXT NOT NULL DEFAULT '',
     link_sistema TEXT NOT NULL DEFAULT '',
+    links_sistema JSONB NOT NULL DEFAULT '[]'::jsonb,
     resumo TEXT NOT NULL DEFAULT '',
     logo_url TEXT NOT NULL DEFAULT '',
     ativo BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Compatibilidade para bancos já existentes: adiciona a lista e preserva o link atual.
+ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS links_sistema JSONB NOT NULL DEFAULT '[]'::jsonb;
+UPDATE public.empresas
+SET links_sistema = jsonb_build_array(jsonb_build_object('nome', 'Sistema principal', 'url', link_sistema))
+WHERE jsonb_array_length(links_sistema) = 0 AND COALESCE(link_sistema, '') <> '';
 
 -- Índices para buscas rápidas
 CREATE INDEX IF NOT EXISTS idx_empresas_ativo ON public.empresas(ativo);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Building2, ExternalLink, Calendar, Tag, Layers, CheckCircle2, XCircle } from 'lucide-react';
 import { Empresa } from '../../types';
+import { getEmpresaLinks } from '../../lib/empresaLinks';
 
 interface EmpresaDetailsModalProps {
   isOpen: boolean;
@@ -109,20 +110,21 @@ export const EmpresaDetailsModal: React.FC<EmpresaDetailsModalProps> = ({
             </div>
           </div>
 
-          {/* Link do Sistema */}
+          {/* Links dos Sistemas */}
           <div>
-            <span className="block text-slate-500 font-medium mb-1">Link do Sistema Operacional</span>
-            <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-              <span className="font-mono text-slate-700 truncate mr-2">{empresa.link_sistema}</span>
-              <a
-                href={empresa.link_sistema}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-md font-semibold text-[11px] shrink-0 transition-colors"
-              >
-                <span>Acessar</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+            <span className="block text-slate-500 font-medium mb-1">Links dos Sistemas Operacionais</span>
+            <div className="space-y-2">
+              {getEmpresaLinks(empresa).map((link, index) => (
+                <div key={`${link.url}-${index}`} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="min-w-0 mr-2">
+                    <span className="block font-semibold text-slate-800">{link.nome}</span>
+                    <span className="block font-mono text-slate-500 truncate">{link.url}</span>
+                  </div>
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-md font-semibold text-[11px] shrink-0 transition-colors">
+                    <span>Acessar</span><ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              ))}
             </div>
           </div>
 
