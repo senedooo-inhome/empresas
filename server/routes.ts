@@ -102,6 +102,129 @@ router.post('/auth/logout', (_req, res) => { res.clearCookie('sonax_token'); res
 router.get('/auth/me', requireAuth, (req: any, res) => res.json({ user: req.user }));
 
 
+router.all('/operacional', requireAuth, async (req: any, res) => {
+  const action = String(req.query.action || '').toLowerCase();
+
+  if (action === 'agentes') {
+    if (req.user?.role !== 'supervisao') return res.status(403).json({ error: 'Acesso permitido somente para supervisão.' });
+    if (!supabase) return res.status(500).json({ error: 'Cadastro de agentes exige Supabase configurado.' });
+
+    if (req.method === 'GET') {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('id, auth_user_id, email, login, nome, role, ramal, codigo_sonax, nicho_agente, turno, ativo, created_at, updated_at')
+        .eq('role', 'agente')
+        .order('nome');
+      if (error) return res.status(500).json({ error: 'Não foi possível consultar os agentes.', details: error.message });
+      return res.json(data || []);
+    }
+
+    if (req.method === 'POST') {
+      const nome = String(req.body?.nome || '').trim();
+      const login = String(req.body?.login || nome).trim().replace(/\s+/g, ' ');
+      const ramal = String(req.body?.ramal || '').trim();
+      const codigo_sonax = String(req.body?.codigo_sonax || '26253').trim() || '26253';
+      const nicho_agente = String(req.body?.nicho_agente || '').trim();
+      const turno = String(req.body?.turno || '').trim();
+      const senha = String(req.body?.senha || '');
+      if (!nome || !login || !ramal || !turno || !senha) return res.status(400).json({ error: 'Nome, ramal, turno e senha são obrigatórios.' });
+      if (!['SAC', 'CLINICAS', 'SAC & CLINICA'].includes(nicho_agente)) return res.status(400).json({ error: 'Nicho inválido.' });
+      if (senha.length < 6) return res.status(400).json({ error: 'A senha deve possuir pelo menos 6 caracteres.' });
+
+      const { data: duplicate, error: duplicateError } = await supabase.from('usuarios').select('id').ilike('login', login).maybeSingle();
+      if (duplicateError) return res.status(500).json({ error: 'Não foi possível validar o login do agente.', details: duplicateError.message });
+      if (duplicate) return res.status(409).json({ error: 'Já existe um agente com esse login.' });
+
+      const slug = login.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '') || 'agente';
+      const email = `${slug}.${Date.now().toString(36)}@agentes.sonax.net.br`;
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({ email, password: senha, email_confirm: true, user_metadata: { nome, login, role: 'agente' } });
+      if (authError || !authData.user) return res.status(500).json({ error: 'Não foi possível criar o login no Supabase Auth.', details: authError?.message || null });
+
+      const { data, error } = await supabase.from('usuarios').insert({ auth_user_id: authData.user.id, email, login, nome, role: 'agente', ramal, codigo_sonax, nicho_agente, turno, ativo: true }).select('*').single();
+      if (error) {
+        await supabase.auth.admin.deleteUser(authData.user.id).catch(() => undefined);
+        return res.status(500).json({ error: 'Não foi possível salvar o perfil do agente.', details: error.message });
+      }
+      return res.status(201).json(data);
+    }
+    return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  if (action === 'dashboard') {
+    if (req.user?.role !== 'supervisao') return res.status(403).json({ error: 'Acesso permitido somente para supervisão.' });
+    if (req.method !== 'GET') return res.status(405).json({ error: 'Método não permitido' });
+    if (!supabase) return res.json({ agentes: [], acessos_hoje: [], pendentes_ciencia: [], total_recados_vigentes: 0 });
+
+    const hoje = String(req.query.data || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()));
+    const [agentesResult, acessosResult, recadosResult] = await Promise.all([
+      supabase.from('usuarios').select('id, auth_user_id, login, nome, ramal, nicho_agente, turno').eq('role', 'agente').eq('ativo', true).order('nome'),
+      supabase.from('agente_acessos').select('usuario_id, login_em').eq('data_acesso', hoje),
+      supabase.from('recados').select('id, updated_at').lte('data_inicio', hoje).gte('data_fim', hoje),
+    ]);
+    const firstError = agentesResult.error || acessosResult.error || recadosResult.error;
+    if (firstError) return res.status(500).json({ error: 'Não foi possível montar o dashboard.', details: firstError.message });
+
+    const agentes = agentesResult.data || [];
+    const acessos = acessosResult.data || [];
+    const recados = recadosResult.data || [];
+    const ids = recados.map((r: any) => r.id);
+    let leituras: any[] = [];
+    if (ids.length) {
+      const result = await supabase.from('recados_leituras').select('recado_id, usuario_id, recado_updated_at').in('recado_id', ids);
+      if (result.error) return res.status(500).json({ error: 'Não foi possível consultar confirmações.', details: result.error.message });
+      leituras = result.data || [];
+    }
+    const setA = new Set(acessos.map((a: any) => String(a.usuario_id)));
+    const rows = agentes.map((a: any) => {
+      const uid = String(a.auth_user_id || a.id);
+      const p = recados.filter((r: any) => !leituras.some((l: any) => String(l.usuario_id) === uid && String(l.recado_id) === String(r.id) && new Date(l.recado_updated_at).getTime() === new Date(r.updated_at).getTime())).length;
+      const acc = acessos.filter((x: any) => String(x.usuario_id) === uid).sort((x: any, y: any) => String(y.login_em).localeCompare(String(x.login_em)))[0];
+      return { ...a, acessou_hoje: setA.has(uid), ultimo_acesso_hoje: acc?.login_em || null, recados_pendentes: p };
+    });
+    return res.json({ data: hoje, agentes: rows, acessos_hoje: rows.filter((a: any) => a.acessou_hoje), pendentes_ciencia: rows.filter((a: any) => a.recados_pendentes > 0), total_recados_vigentes: recados.length });
+  }
+
+  if (action === 'leituras') {
+    if (!supabase) return req.method === 'GET' ? res.json([]) : res.status(500).json({ error: 'Supabase não configurado.' });
+
+    if (req.method === 'GET') {
+      const hoje = String(req.query.data || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()));
+      let q = supabase.from('recados').select('*').lte('data_inicio', hoje).gte('data_fim', hoje).order('data_inicio', { ascending: false }).order('created_at', { ascending: false });
+      if (req.query.empresa_id) q = q.eq('empresa_id', String(req.query.empresa_id));
+      const { data: recados, error } = await q;
+      if (error) return res.status(500).json({ error: 'Não foi possível consultar os recados vigentes.', details: error.message });
+      const ids = (recados || []).map((r: any) => r.id);
+      let leituras: any[] = [];
+      if (ids.length) {
+        const result = await supabase.from('recados_leituras').select('*').eq('usuario_id', req.user.id).in('recado_id', ids).order('confirmado_em', { ascending: false });
+        if (result.error) return res.status(500).json({ error: 'Não foi possível consultar as leituras.', details: result.error.message });
+        leituras = result.data || [];
+      }
+      return res.json((recados || []).map((r: any) => {
+        const h = leituras.filter((l: any) => String(l.recado_id) === String(r.id));
+        const atual = h.find((l: any) => new Date(l.recado_updated_at).getTime() === new Date(r.updated_at).getTime());
+        return { id: r.id, empresa_id: r.empresa_id, empresa_nome: r.empresa_nome, data_inicio: r.data_inicio, data_fim: r.data_fim, data_recado: r.data_inicio, mensagem: r.mensagem, criado_por: r.criado_por, criado_por_email: r.criado_por_email, createdAt: r.created_at, updatedAt: r.updated_at, lido: Boolean(atual), teve_leitura_anterior: h.length > 0, confirmacao_tipo: atual?.tipo || null, confirmado_em: atual?.confirmado_em || null };
+      }));
+    }
+
+    if (req.method === 'POST') {
+      if (req.user.role !== 'agente') return res.status(403).json({ error: 'Somente agentes precisam confirmar recados.' });
+      const id = String(req.body?.recado_id || '');
+      if (!id) return res.status(400).json({ error: 'Recado obrigatório.' });
+      const { data: rec, error: recError } = await supabase.from('recados').select('id,updated_at').eq('id', id).maybeSingle();
+      if (recError || !rec) return res.status(404).json({ error: 'Recado não encontrado.' });
+      const { data: h } = await supabase.from('recados_leituras').select('id').eq('usuario_id', req.user.id).eq('recado_id', id).limit(1);
+      const { data, error } = await supabase.from('recados_leituras').upsert({ recado_id: id, usuario_id: req.user.id, recado_updated_at: rec.updated_at, tipo: h?.length ? 'atualizacao' : 'lido' }, { onConflict: 'recado_id,usuario_id,recado_updated_at' }).select('*').single();
+      if (error) return res.status(500).json({ error: 'Não foi possível confirmar a leitura.', details: error.message });
+      return res.status(201).json(data);
+    }
+    return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  return res.status(400).json({ error: 'Operação inválida.' });
+});
+
+
 
 router.get('/agentes', requireAuth, requireSupervisor, async (_req, res) => {
   if (!supabase) return res.json([]);

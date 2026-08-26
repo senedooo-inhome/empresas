@@ -302,7 +302,7 @@ export async function seedInitialDataIfEmpty(): Promise<void> {
 // 6. AGENTES / DASHBOARD / CIÊNCIA DE RECADOS
 // ==========================================
 export async function getAgentes(): Promise<Agente[]> {
-  return apiRequest<Agente[]>('/api/agentes');
+  return apiRequest<Agente[]>('/api/operacional?action=agentes');
 }
 
 export async function createAgente(payload: {
@@ -313,12 +313,12 @@ export async function createAgente(payload: {
   turno: string;
   senha: string;
 }): Promise<Agente> {
-  return apiRequest<Agente>('/api/agentes', { method: 'POST', body: JSON.stringify(payload) });
+  return apiRequest<Agente>('/api/operacional?action=agentes', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 export async function getDashboardSupervisao(data?: string): Promise<any> {
   const query = data ? `?data=${encodeURIComponent(data)}` : '';
-  return apiRequest<any>(`/api/dashboard${query}`);
+  return apiRequest<any>(`/api/operacional?action=dashboard${query ? `&${query.slice(1)}` : ''}`);
 }
 
 export async function getRecadosVigentesComLeitura(empresaId?: string, data?: string): Promise<RecadoLeituraStatus[]> {
@@ -326,10 +326,10 @@ export async function getRecadosVigentesComLeitura(empresaId?: string, data?: st
   if (empresaId) params.set('empresa_id', empresaId);
   if (data) params.set('data', data);
   const query = params.toString() ? `?${params.toString()}` : '';
-  return apiRequest<RecadoLeituraStatus[]>(`/api/recados/leituras${query}`);
+  return apiRequest<RecadoLeituraStatus[]>(`/api/operacional?action=leituras${query ? `&${query.slice(1)}` : ''}`);
 }
 
 export async function confirmarLeituraRecado(recadoId: string): Promise<void> {
-  await apiRequest('/api/recados/leituras', { method: 'POST', body: JSON.stringify({ recado_id: recadoId }) });
+  await apiRequest('/api/operacional?action=leituras', { method: 'POST', body: JSON.stringify({ recado_id: recadoId }) });
   notifyChange();
 }
