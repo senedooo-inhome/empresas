@@ -15,6 +15,7 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   nome: string;
+  login?: string;
 }
 
 export interface SistemaLink {
@@ -40,7 +41,9 @@ export interface Recado {
   id: string;
   empresa_id: string;
   empresa_nome?: string; // Campo enriquecido para conveniência
-  data_recado: string; // Formato estrito YYYY-MM-DD
+  data_recado: string; // Compatibilidade: corresponde à data inicial
+  data_inicio: string;
+  data_fim: string;
   mensagem: string;
   criado_por: string;
   criado_por_email?: string;
@@ -57,4 +60,25 @@ export type RecadoStatus = 'Hoje' | 'Futuro' | 'Expirado';
 
 export interface RecadoComStatus extends Recado {
   status: RecadoStatus;
+}
+
+export interface Agente {
+  id: string;
+  auth_user_id?: string;
+  email: string;
+  login: string;
+  nome: string;
+  ramal: string;
+  codigo_sonax: string;
+  nicho_agente: 'SAC' | 'CLINICAS' | 'SAC & CLINICA';
+  turno: string;
+  ativo: boolean;
+  created_at?: string;
+}
+
+export interface RecadoLeituraStatus extends Recado {
+  lido: boolean;
+  teve_leitura_anterior: boolean;
+  confirmacao_tipo?: 'lido' | 'atualizacao' | null;
+  confirmado_em?: string | null;
 }

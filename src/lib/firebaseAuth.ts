@@ -9,10 +9,10 @@ export interface AuthState {
 
 // Login interno via Backend
 export async function loginWithBackend(email: string, pass: string): Promise<UserProfile> {
-  const trimmedEmail = email.trim().toLowerCase();
+  const identifier = email.trim();
   const res = await apiRequest<{ user: UserProfile; token: string }>('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email: trimmedEmail, password: pass }),
+    body: JSON.stringify({ login: identifier, password: pass }),
   });
 
   if (typeof window !== 'undefined' && res.token) {

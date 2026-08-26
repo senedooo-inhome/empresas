@@ -110,6 +110,11 @@ export function mapEmpresa(row: any) {
     nicho: row.nicho,
     segmento: row.segmento,
     link_sistema: row.link_sistema,
+    links_sistema: Array.isArray(row.links_sistema) && row.links_sistema.length
+      ? row.links_sistema
+      : row.link_sistema
+        ? [{ nome: 'Sistema principal', url: row.link_sistema }]
+        : [],
     resumo: row.resumo,
     logo_url: row.logo_url,
     ativo: row.ativo,

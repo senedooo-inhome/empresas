@@ -110,6 +110,8 @@ export const RecadosDoDiaAdmin: React.FC = () => {
   const handleSaveRecado = async (data: {
     empresa_id: string;
     data_recado: string;
+    data_inicio: string;
+    data_fim: string;
     mensagem: string;
     criado_por: string;
   }) => {
@@ -118,6 +120,8 @@ export const RecadosDoDiaAdmin: React.FC = () => {
         await updateRecado(recadoToEdit.id, {
           empresa_id: data.empresa_id,
           data_recado: data.data_recado,
+          data_inicio: data.data_inicio,
+          data_fim: data.data_fim,
           mensagem: data.mensagem,
         });
         showToast('Recado atualizado com sucesso.');
@@ -127,7 +131,8 @@ export const RecadosDoDiaAdmin: React.FC = () => {
       }
     } catch (e) {
       console.error('Erro ao salvar recado:', e);
-      showToast('Não foi possível salvar o recado. Tente novamente.', 'error');
+      const apiDetails = (e as any)?.data?.details || (e as any)?.data?.error || (e as any)?.message;
+      showToast(apiDetails ? `Não foi possível salvar o recado: ${apiDetails}` : 'Não foi possível salvar o recado. Tente novamente.', 'error');
       throw e;
     }
   };
@@ -332,7 +337,7 @@ export const RecadosDoDiaAdmin: React.FC = () => {
 
                       {/* Data */}
                       <td className="py-3.5 px-4 font-semibold text-slate-700 whitespace-nowrap">
-                        {formatDataBr(recado.data_recado)}
+                        {formatDataBr(recado.data_inicio || recado.data_recado)} a {formatDataBr(recado.data_fim || recado.data_recado)}
                       </td>
 
                       {/* Recado Preview */}

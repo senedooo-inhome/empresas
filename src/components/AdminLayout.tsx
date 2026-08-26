@@ -11,6 +11,7 @@ import {
   UserCheck,
   ChevronRight,
   Shield,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation, AppRoute } from '../contexts/NavigationContext';
@@ -18,6 +19,8 @@ import { SonaxLogo } from './SonaxLogo';
 import { EmpresasAdmin } from './admin/EmpresasAdmin';
 import { RecadosDoDiaAdmin } from './admin/RecadosDoDiaAdmin';
 import { HistoricoRecadosAdmin } from './admin/HistoricoRecadosAdmin';
+import { AgentesAdmin } from './admin/AgentesAdmin';
+import { DashboardSupervisao } from './admin/DashboardSupervisao';
 
 export const AdminLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -30,6 +33,12 @@ export const AdminLayout: React.FC = () => {
       label: 'Início',
       route: '/admin' as AppRoute,
       icon: Home,
+    },
+    {
+      id: 'agentes',
+      label: 'Cadastro de Agentes',
+      route: '/admin/agentes' as AppRoute,
+      icon: Users,
     },
     {
       id: 'empresas',
@@ -64,76 +73,20 @@ export const AdminLayout: React.FC = () => {
     if (currentRoute === '/admin') {
       return (
         <div className="space-y-6" id="admin-home-view">
-          {/* Welcome Header */}
           <div className="bg-white border border-slate-200/80 rounded-xl p-6 sm:p-8 shadow-xs">
             <div className="max-w-3xl">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200/60 mb-3">
-                <Shield className="w-3.5 h-3.5" />
-                Painel Administrativo
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                Portal Operacional
-              </h1>
-              <p className="text-sm sm:text-base font-medium text-slate-500 mt-1">
-                Sonax In Home
-              </p>
-              <div className="h-px bg-slate-200 my-4" />
-              <p className="text-slate-700 text-sm leading-relaxed">
-                Bem-vindo(a) ao ambiente de Supervisão. Utilize o menu lateral ou os atalhos abaixo para gerenciar as empresas atendidas e os comunicados operacionais diários.
-              </p>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200/60 mb-3"><Shield className="w-3.5 h-3.5" /> Painel Administrativo</span>
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Dashboard da Supervisão</h1>
+              <p className="text-sm text-slate-600 mt-2">Acompanhe os agentes que acessaram o sistema hoje e quem ainda possui recados aguardando confirmação.</p>
             </div>
           </div>
-
-          {/* Quick Access Shortcut Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Shortcut: Empresas */}
-            <div
-              id="shortcut-card-empresas"
-              onClick={() => navigate('/admin/empresas')}
-              className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-xs hover:border-sky-300 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-10 h-10 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center mb-4 group-hover:bg-sky-600 group-hover:text-white transition-colors">
-                  <Building2 className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900 group-hover:text-sky-700 transition-colors">
-                  Empresas
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Gerenciamento de empresas atendidas, nichos, segmentos e links operacionais.
-                </p>
-              </div>
-              <div className="mt-5 flex items-center text-xs font-semibold text-sky-600 group-hover:text-sky-700">
-                <span>Acessar gestão</span>
-                <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-0.5 transition-transform" />
-              </div>
-            </div>
-
-            {/* Shortcut: Recados do Dia */}
-            <div
-              id="shortcut-card-recados"
-              onClick={() => navigate('/admin/recados')}
-              className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-xs hover:border-sky-300 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-10 h-10 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center mb-4 group-hover:bg-sky-600 group-hover:text-white transition-colors">
-                  <MessageSquare className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900 group-hover:text-sky-700 transition-colors">
-                  Recados do Dia
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Cadastro, atualização e acompanhamento dos avisos operacionais diários.
-                </p>
-              </div>
-              <div className="mt-5 flex items-center text-xs font-semibold text-sky-600 group-hover:text-sky-700">
-                <span>Acessar recados</span>
-                <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-0.5 transition-transform" />
-              </div>
-            </div>
-          </div>
+          <DashboardSupervisao />
         </div>
       );
+    }
+
+    if (currentRoute === '/admin/agentes') {
+      return <AgentesAdmin />;
     }
 
     if (currentRoute === '/admin/empresas') {

@@ -9,7 +9,7 @@ import dotenv from 'dotenv';
 type Role = 'supervisao' | 'agente';
 type User = { id: string; email: string; nome: string; role: Role };
 type Empresa = { id: string; nome: string; nicho: string; segmento: string; link_sistema: string; links_sistema?: Array<{ nome: string; url: string }>; resumo: string; logo_url: string; ativo: boolean; createdAt: string; updatedAt: string };
-type Recado = { id: string; empresa_id: string; data_recado: string; mensagem: string; criado_por: string; createdAt: string; updatedAt: string };
+type Recado = { id: string; empresa_id: string; data_recado: string; data_inicio?: string; data_fim?: string; mensagem: string; criado_por: string; createdAt: string; updatedAt: string };
 type Store = { empresas: Empresa[]; recados: Recado[] };
 
 dotenv.config({ path: '.env.local' });
@@ -50,30 +50,46 @@ function requireSupervisor(req: any, res: any, next: any) { if (req.user?.role !
 function enrichRecado(recado: Recado, store: Store) { return { ...recado, empresa_nome: store.empresas.find((empresa) => empresa.id === recado.empresa_id)?.nome }; }
 
 router.post('/auth/login', async (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
+  const identifier = String(req.body?.email || req.body?.login || '').trim();
   const password = String(req.body?.password || '');
   let user: User | null = null;
 
   if (supabase) {
-    if (!supabaseAuth) {
-      return res.status(500).json({ error: 'Configuração incompleta: SUPABASE_ANON_KEY.' });
+    if (!supabaseAuth) return res.status(500).json({ error: 'Configuração incompleta: SUPABASE_ANON_KEY.' });
+    let profile: any = null;
+    if (identifier.includes('@')) {
+      const { data, error } = await supabase.from('usuarios').select('id, auth_user_id, email, login, nome, role, ativo').ilike('email', identifier).maybeSingle();
+      if (error) return res.status(500).json({ error: 'Não foi possível consultar os usuários.' });
+      profile = data;
+    } else {
+      const { data, error } = await supabase.from('usuarios').select('id, auth_user_id, email, login, nome, role, ativo').ilike('login', identifier).maybeSingle();
+      if (error) return res.status(500).json({ error: 'Não foi possível consultar os usuários.' });
+      profile = data;
     }
-    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({ email, password });
-    if (authError || !authData.user) {
-      console.warn('[auth/login local] Supabase Auth recusou o login:', authError?.message);
-      return res.status(401).json({ error: 'Usuário ou senha inválidos' });
+    if (!profile || profile.ativo === false) return res.status(401).json({ error: 'Usuário ou senha inválidos' });
+    let authEmail = String(profile.email || '').trim().toLowerCase();
+    if (profile.auth_user_id) {
+      const { data: authLookup } = await supabase.auth.admin.getUserById(String(profile.auth_user_id));
+      if (authLookup?.user?.email) authEmail = String(authLookup.user.email).trim().toLowerCase();
     }
-
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('id, email, nome, role')
-      .eq('email', email)
-      .maybeSingle();
-    if (error) return res.status(500).json({ error: 'Não foi possível consultar os usuários.' });
-    if (!data) return res.status(403).json({ error: 'Perfil do usuário não cadastrado na tabela usuarios.' });
-    user = { id: authData.user.id, email: data.email, nome: data.nome, role: data.role as Role };
+    if (profile.role === 'agente' && authEmail.endsWith('@agentes.sonax.local') && profile.auth_user_id) {
+      const migratedEmail = `${authEmail.split('@')[0]}@agentes.sonax.net.br`;
+      const { data: updatedAuth, error: migrateError } = await supabase.auth.admin.updateUserById(String(profile.auth_user_id), { email: migratedEmail, email_confirm: true });
+      if (!migrateError && updatedAuth.user?.email) {
+        authEmail = String(updatedAuth.user.email).toLowerCase();
+        await supabase.from('usuarios').update({ email: authEmail }).eq('id', profile.id);
+      }
+    }
+    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({ email: authEmail, password });
+    if (authError || !authData.user) return res.status(401).json({ error: 'Usuário ou senha inválidos', details: authError?.message || null });
+    user = { id: authData.user.id, email: profile.email, nome: profile.nome, role: profile.role as Role };
+    if (profile.role === 'agente') {
+      const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+      await supabase.from('agente_acessos').insert({ usuario_id: authData.user.id, data_acesso: hoje });
+    }
   } else {
-    const found = users.find((candidate) => candidate.email === email);
+    const normalized = identifier.toLowerCase();
+    const found = users.find((candidate) => candidate.email === normalized || candidate.nome.toLowerCase() === normalized);
     if (!found || !found.password || password !== found.password) return res.status(401).json({ error: 'Usuário ou senha inválidos' });
     user = { id: found.id, email: found.email, nome: found.nome, role: found.role };
   }
@@ -85,17 +101,149 @@ router.post('/auth/login', async (req, res) => {
 router.post('/auth/logout', (_req, res) => { res.clearCookie('sonax_token'); res.status(204).end(); });
 router.get('/auth/me', requireAuth, (req: any, res) => res.json({ user: req.user }));
 
-router.get('/empresas', requireAuth, (req, res) => { const empresas = readStore().empresas; res.json(req.query.ativas === 'true' ? empresas.filter((empresa) => empresa.ativo) : empresas); });
-router.get('/empresas/:id', requireAuth, (req, res) => { const empresa = readStore().empresas.find((item) => item.id === req.params.id); if (!empresa) return res.status(404).json({ error: 'Empresa não encontrada' }); res.json(empresa); });
-router.post('/empresas', requireAuth, requireSupervisor, (req, res) => { const now = new Date().toISOString(); const empresa: Empresa = { id: randomUUID(), ...req.body, ativo: req.body?.ativo ?? true, createdAt: now, updatedAt: now }; const store = readStore(); store.empresas.push(empresa); writeStore(store); res.status(201).json(empresa); });
-router.put('/empresas/:id', requireAuth, requireSupervisor, (req, res) => { const store = readStore(); const index = store.empresas.findIndex((item) => item.id === req.params.id); if (index < 0) return res.status(404).json({ error: 'Empresa não encontrada' }); store.empresas[index] = { ...store.empresas[index], ...req.body, id: store.empresas[index].id, createdAt: store.empresas[index].createdAt, updatedAt: new Date().toISOString() }; writeStore(store); res.json(store.empresas[index]); });
-router.patch('/empresas/:id/status', requireAuth, requireSupervisor, (req, res) => { const store = readStore(); const empresa = store.empresas.find((item) => item.id === req.params.id); if (!empresa) return res.status(404).json({ error: 'Empresa não encontrada' }); empresa.ativo = Boolean(req.body?.ativo); empresa.updatedAt = new Date().toISOString(); writeStore(store); res.json(empresa); });
-router.delete('/empresas/:id', requireAuth, requireSupervisor, (req, res) => { const store = readStore(); const empresa = store.empresas.find((item) => item.id === req.params.id); if (!empresa) return res.status(404).json({ error: 'Empresa não encontrada' }); empresa.ativo = false; empresa.updatedAt = new Date().toISOString(); writeStore(store); res.json({ inativada: true, totalRecadosVinculados: store.recados.filter((recado) => recado.empresa_id === empresa.id).length, message: 'Empresa inativada com sucesso.' }); });
 
-router.get('/recados/empresa/:empresaId/hoje', requireAuth, (req, res) => { const store = readStore(); const date = String(req.query.dataHoje || ''); res.json(store.recados.filter((recado) => recado.empresa_id === req.params.empresaId && recado.data_recado === date).map((recado) => enrichRecado(recado, store))); });
-router.get('/recados', requireAuth, (req, res) => { const store = readStore(); let recados = store.recados; if (req.query.empresa_id) recados = recados.filter((recado) => recado.empresa_id === req.query.empresa_id); if (req.query.data_recado) recados = recados.filter((recado) => recado.data_recado === req.query.data_recado); res.json(recados.map((recado) => enrichRecado(recado, store))); });
-router.post('/recados', requireAuth, requireSupervisor, (req, res) => { const store = readStore(); if (!store.empresas.some((empresa) => empresa.id === req.body?.empresa_id)) return res.status(400).json({ error: 'Empresa inválida' }); const now = new Date().toISOString(); const recado: Recado = { id: randomUUID(), ...req.body, createdAt: now, updatedAt: now }; store.recados.push(recado); writeStore(store); res.status(201).json(enrichRecado(recado, store)); });
-router.put('/recados/:id', requireAuth, requireSupervisor, (req, res) => { const store = readStore(); const index = store.recados.findIndex((item) => item.id === req.params.id); if (index < 0) return res.status(404).json({ error: 'Recado não encontrado' }); store.recados[index] = { ...store.recados[index], ...req.body, id: store.recados[index].id, createdAt: store.recados[index].createdAt, updatedAt: new Date().toISOString() }; writeStore(store); res.json(enrichRecado(store.recados[index], store)); });
-router.delete('/recados/:id', requireAuth, requireSupervisor, (req, res) => { const store = readStore(); const index = store.recados.findIndex((item) => item.id === req.params.id); if (index < 0) return res.status(404).json({ error: 'Recado não encontrado' }); store.recados.splice(index, 1); writeStore(store); res.status(204).end(); });
+
+router.get('/agentes', requireAuth, requireSupervisor, async (_req, res) => {
+  if (!supabase) return res.json([]);
+  const { data, error } = await supabase.from('usuarios').select('id, auth_user_id, email, login, nome, role, ramal, codigo_sonax, nicho_agente, turno, ativo, created_at').eq('role','agente').order('nome');
+  if (error) return res.status(500).json({ error: 'Não foi possível consultar os agentes.' });
+  res.json(data || []);
+});
+router.post('/agentes', requireAuth, requireSupervisor, async (req, res) => {
+  if (!supabase) return res.status(500).json({ error: 'Cadastro de agentes exige Supabase configurado.' });
+  const nome=String(req.body?.nome||'').trim(), ramal=String(req.body?.ramal||'').trim(), codigo_sonax=String(req.body?.codigo_sonax||'26253'), nicho_agente=String(req.body?.nicho_agente||''), turno=String(req.body?.turno||'').trim(), senha=String(req.body?.senha||'');
+  if(!nome||!ramal||!turno||senha.length<6) return res.status(400).json({error:'Preencha os campos obrigatórios e use senha com no mínimo 6 caracteres.'});
+  const login=nome.replace(/\s+/g,' '), slug=nome.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'.').replace(/^\.|\.$/g,'')||'agente';
+  const email=`${slug}.${Date.now().toString(36)}@agentes.sonax.net.br`;
+  const {data:authData,error:authError}=await supabase.auth.admin.createUser({email,password:senha,email_confirm:true,user_metadata:{nome,login,role:'agente'}});
+  if(authError||!authData.user)return res.status(500).json({error:'Não foi possível criar o login no Supabase Auth.'});
+  const {data,error}=await supabase.from('usuarios').insert({auth_user_id:authData.user.id,email,login,nome,role:'agente',ramal,codigo_sonax,nicho_agente,turno,ativo:true}).select('*').single();
+  if(error){await supabase.auth.admin.deleteUser(authData.user.id);return res.status(500).json({error:'Não foi possível salvar o perfil do agente.'});}
+  res.status(201).json(data);
+});
+
+router.get('/dashboard', requireAuth, requireSupervisor, async (_req,res)=>{
+  if(!supabase)return res.json({agentes:[],acessos_hoje:[],pendentes_ciencia:[],total_recados_vigentes:0});
+  const hoje=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date());
+  const [{data:agentes},{data:acessos},{data:recados}]=await Promise.all([
+    supabase.from('usuarios').select('id, auth_user_id, login, nome, ramal, nicho_agente, turno').eq('role','agente').eq('ativo',true).order('nome'),
+    supabase.from('agente_acessos').select('usuario_id, login_em').eq('data_acesso',hoje),
+    supabase.from('recados').select('id, updated_at').lte('data_inicio',hoje).gte('data_fim',hoje)
+  ]);
+  const ids=(recados||[]).map((r:any)=>r.id); let leituras:any[]=[];
+  if(ids.length){const r=await supabase.from('recados_leituras').select('recado_id, usuario_id, recado_updated_at').in('recado_id',ids);leituras=r.data||[];}
+  const setA=new Set((acessos||[]).map((a:any)=>String(a.usuario_id)));
+  const rows=(agentes||[]).map((a:any)=>{const uid=String(a.auth_user_id||a.id);const p=(recados||[]).filter((r:any)=>!leituras.some((l:any)=>String(l.usuario_id)===uid&&String(l.recado_id)===String(r.id)&&new Date(l.recado_updated_at).getTime()===new Date(r.updated_at).getTime())).length;const acc=(acessos||[]).filter((x:any)=>String(x.usuario_id)===uid).sort((x:any,y:any)=>String(y.login_em).localeCompare(String(x.login_em)))[0];return {...a,acessou_hoje:setA.has(uid),ultimo_acesso_hoje:acc?.login_em||null,recados_pendentes:p};});
+  res.json({data:hoje,agentes:rows,acessos_hoje:rows.filter((a:any)=>a.acessou_hoje),pendentes_ciencia:rows.filter((a:any)=>a.recados_pendentes>0),total_recados_vigentes:(recados||[]).length});
+});
+
+router.get('/recados/leituras', requireAuth, async (req:any,res)=>{
+  if(!supabase)return res.json([]); const hoje=String(req.query.data||new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date()));
+  let q=supabase.from('recados').select('*').lte('data_inicio',hoje).gte('data_fim',hoje).order('data_inicio',{ascending:false}); if(req.query.empresa_id)q=q.eq('empresa_id',String(req.query.empresa_id));
+  const {data:recados,error}=await q;if(error)return res.status(500).json({error:'Não foi possível consultar os recados.'}); const ids=(recados||[]).map((r:any)=>r.id);let leituras:any[]=[];
+  if(ids.length){const r=await supabase.from('recados_leituras').select('*').eq('usuario_id',req.user.id).in('recado_id',ids).order('confirmado_em',{ascending:false});leituras=r.data||[];}
+  res.json((recados||[]).map((r:any)=>{const h=leituras.filter((l:any)=>String(l.recado_id)===String(r.id));const atual=h.find((l:any)=>new Date(l.recado_updated_at).getTime()===new Date(r.updated_at).getTime());return {id:r.id,empresa_id:r.empresa_id,empresa_nome:r.empresa_nome,data_inicio:r.data_inicio,data_fim:r.data_fim,data_recado:r.data_inicio,mensagem:r.mensagem,criado_por:r.criado_por,createdAt:r.created_at,updatedAt:r.updated_at,lido:Boolean(atual),teve_leitura_anterior:h.length>0,confirmacao_tipo:atual?.tipo||null,confirmado_em:atual?.confirmado_em||null};}));
+});
+router.post('/recados/leituras', requireAuth, async (req:any,res)=>{
+  if(req.user.role!=='agente')return res.status(403).json({error:'Somente agentes precisam confirmar recados.'}); if(!supabase)return res.status(500).json({error:'Supabase não configurado.'}); const id=String(req.body?.recado_id||'');
+  const {data:rec}=await supabase.from('recados').select('id,updated_at').eq('id',id).maybeSingle();if(!rec)return res.status(404).json({error:'Recado não encontrado.'}); const {data:h}=await supabase.from('recados_leituras').select('id').eq('usuario_id',req.user.id).eq('recado_id',id).limit(1);
+  const {data,error}=await supabase.from('recados_leituras').upsert({recado_id:id,usuario_id:req.user.id,recado_updated_at:rec.updated_at,tipo:h?.length?'atualizacao':'lido'},{onConflict:'recado_id,usuario_id,recado_updated_at'}).select('*').single();if(error)return res.status(500).json({error:'Não foi possível confirmar a leitura.'});res.status(201).json(data);
+});
+
+router.get('/empresas', requireAuth, async (req, res) => {
+  if (!supabase) {
+    const empresas = readStore().empresas;
+    return res.json(req.query.ativas === 'true' ? empresas.filter((empresa) => empresa.ativo) : empresas);
+  }
+  let query = supabase.from('empresas').select('*').order('nome', { ascending: true });
+  if (req.query.ativas === 'true') query = query.eq('ativo', true);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: 'Não foi possível consultar as empresas.', details: error.message });
+  return res.json((data || []).map((row:any) => ({ ...row, createdAt: row.created_at, updatedAt: row.updated_at })));
+});
+router.get('/empresas/:id', requireAuth, async (req, res) => {
+  if (!supabase) {
+    const empresa = readStore().empresas.find((item) => item.id === req.params.id);
+    return empresa ? res.json(empresa) : res.status(404).json({ error: 'Empresa não encontrada' });
+  }
+  const { data, error } = await supabase.from('empresas').select('*').eq('id', req.params.id).maybeSingle();
+  if (error) return res.status(500).json({ error: 'Não foi possível consultar a empresa.', details: error.message });
+  if (!data) return res.status(404).json({ error: 'Empresa não encontrada' });
+  return res.json({ ...data, createdAt: data.created_at, updatedAt: data.updated_at });
+});
+router.post('/empresas', requireAuth, requireSupervisor, async (req, res) => {
+  if (!supabase) { const now = new Date().toISOString(); const empresa: Empresa = { id: randomUUID(), ...req.body, ativo: req.body?.ativo ?? true, createdAt: now, updatedAt: now }; const store = readStore(); store.empresas.push(empresa); writeStore(store); return res.status(201).json(empresa); }
+  const { data, error } = await supabase.from('empresas').insert(req.body).select('*').single();
+  if (error) return res.status(500).json({ error: 'Não foi possível salvar a empresa.', details: error.message });
+  return res.status(201).json({ ...data, createdAt: data.created_at, updatedAt: data.updated_at });
+});
+router.put('/empresas/:id', requireAuth, requireSupervisor, async (req, res) => {
+  if (!supabase) { const store = readStore(); const index = store.empresas.findIndex((item) => item.id === req.params.id); if (index < 0) return res.status(404).json({ error: 'Empresa não encontrada' }); store.empresas[index] = { ...store.empresas[index], ...req.body, id: store.empresas[index].id, createdAt: store.empresas[index].createdAt, updatedAt: new Date().toISOString() }; writeStore(store); return res.json(store.empresas[index]); }
+  const { data, error } = await supabase.from('empresas').update(req.body).eq('id', req.params.id).select('*').maybeSingle();
+  if (error) return res.status(500).json({ error: 'Não foi possível atualizar a empresa.', details: error.message });
+  if (!data) return res.status(404).json({ error: 'Empresa não encontrada' });
+  return res.json({ ...data, createdAt: data.created_at, updatedAt: data.updated_at });
+});
+router.patch('/empresas/:id/status', requireAuth, requireSupervisor, async (req, res) => {
+  if (!supabase) { const store = readStore(); const empresa = store.empresas.find((item) => item.id === req.params.id); if (!empresa) return res.status(404).json({ error: 'Empresa não encontrada' }); empresa.ativo = Boolean(req.body?.ativo); empresa.updatedAt = new Date().toISOString(); writeStore(store); return res.json(empresa); }
+  const { data, error } = await supabase.from('empresas').update({ ativo: Boolean(req.body?.ativo) }).eq('id', req.params.id).select('*').maybeSingle();
+  if (error) return res.status(500).json({ error: 'Não foi possível alterar o status.', details: error.message });
+  if (!data) return res.status(404).json({ error: 'Empresa não encontrada' });
+  return res.json({ ...data, createdAt: data.created_at, updatedAt: data.updated_at });
+});
+router.delete('/empresas/:id', requireAuth, requireSupervisor, async (req, res) => {
+  if (!supabase) { const store = readStore(); const empresa = store.empresas.find((item) => item.id === req.params.id); if (!empresa) return res.status(404).json({ error: 'Empresa não encontrada' }); empresa.ativo = false; empresa.updatedAt = new Date().toISOString(); writeStore(store); return res.json({ inativada: true, totalRecadosVinculados: store.recados.filter((recado) => recado.empresa_id === empresa.id).length, message: 'Empresa inativada com sucesso.' }); }
+  const [{ count }, { data, error }] = await Promise.all([
+    supabase.from('recados').select('id', { count: 'exact', head: true }).eq('empresa_id', req.params.id),
+    supabase.from('empresas').update({ ativo: false }).eq('id', req.params.id).select('id').maybeSingle(),
+  ]);
+  if (error) return res.status(500).json({ error: 'Não foi possível inativar a empresa.', details: error.message });
+  if (!data) return res.status(404).json({ error: 'Empresa não encontrada' });
+  return res.json({ inativada: true, totalRecadosVinculados: count || 0, message: 'Empresa inativada com sucesso.' });
+});
+
+router.get('/recados/empresa/:empresaId/hoje', requireAuth, async (req, res) => {
+  const date = String(req.query.dataHoje || new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date()));
+  if (!supabase) { const store = readStore(); return res.json(store.recados.filter((recado) => recado.empresa_id === req.params.empresaId && (recado.data_inicio || recado.data_recado) <= date && (recado.data_fim || recado.data_recado) >= date).map((recado) => enrichRecado(recado, store))); }
+  const { data, error } = await supabase.from('recados').select('*').eq('empresa_id', req.params.empresaId).lte('data_inicio', date).gte('data_fim', date).order('data_inicio', { ascending: false });
+  if (error) return res.status(500).json({ error: 'Não foi possível consultar os recados.', details: error.message });
+  return res.json((data || []).map((r:any)=>({ ...r, data_recado:r.data_inicio, createdAt:r.created_at, updatedAt:r.updated_at })));
+});
+router.get('/recados', requireAuth, async (req, res) => {
+  if (!supabase) { const store = readStore(); let recados = store.recados; if (req.query.empresa_id) recados = recados.filter((recado) => recado.empresa_id === req.query.empresa_id); if (req.query.data_recado) { const d=String(req.query.data_recado); recados = recados.filter((recado) => (recado.data_inicio || recado.data_recado) <= d && (recado.data_fim || recado.data_recado) >= d); } return res.json(recados.map((recado) => enrichRecado(recado, store))); }
+  let q = supabase.from('recados').select('*').order('data_inicio', { ascending: false }).order('created_at', { ascending: false });
+  if (req.query.empresa_id) q = q.eq('empresa_id', String(req.query.empresa_id));
+  if (req.query.data_recado) { const d=String(req.query.data_recado); q=q.lte('data_inicio',d).gte('data_fim',d); }
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ error: 'Não foi possível consultar os recados.', details: error.message });
+  return res.json((data || []).map((r:any)=>({ ...r, data_recado:r.data_inicio, createdAt:r.created_at, updatedAt:r.updated_at })));
+});
+router.post('/recados', requireAuth, requireSupervisor, async (req:any, res) => {
+  const dataInicio=String(req.body?.data_inicio || req.body?.data_recado || '');
+  const dataFim=String(req.body?.data_fim || req.body?.data_recado || '');
+  const mensagem=String(req.body?.mensagem || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim) || dataFim < dataInicio || !mensagem) return res.status(400).json({ error:'Período válido e mensagem são obrigatórios.' });
+  if (!supabase) { const store = readStore(); if (!store.empresas.some((empresa) => empresa.id === req.body?.empresa_id)) return res.status(400).json({ error: 'Empresa inválida' }); const now = new Date().toISOString(); const recado: Recado = { id: randomUUID(), ...req.body, data_recado:dataInicio, data_inicio:dataInicio, data_fim:dataFim, mensagem, createdAt: now, updatedAt: now }; store.recados.push(recado); writeStore(store); return res.status(201).json(enrichRecado(recado, store)); }
+  const empresaId=String(req.body?.empresa_id || '');
+  const { data: empresa } = await supabase.from('empresas').select('id,nome').eq('id',empresaId).maybeSingle();
+  if (!empresa) return res.status(400).json({ error:'Empresa inválida.' });
+  const payload={empresa_id:empresaId,empresa_nome:empresa.nome,data_inicio:dataInicio,data_fim:dataFim,data_recado:dataInicio,mensagem,criado_por:String(req.body?.criado_por || req.user.id),criado_por_email:req.user.email};
+  const { data, error } = await supabase.from('recados').insert(payload).select('*').single();
+  if (error) return res.status(500).json({ error:'Não foi possível salvar o recado.', details:error.message });
+  return res.status(201).json({ ...data, data_recado:data.data_inicio, createdAt:data.created_at, updatedAt:data.updated_at });
+});
+router.put('/recados/:id', requireAuth, requireSupervisor, async (req:any, res) => {
+  if (!supabase) { const store=readStore(); const index=store.recados.findIndex((item)=>item.id===req.params.id); if(index<0)return res.status(404).json({error:'Recado não encontrado'}); store.recados[index]={...store.recados[index],...req.body,id:store.recados[index].id,createdAt:store.recados[index].createdAt,updatedAt:new Date().toISOString()}; writeStore(store); return res.json(enrichRecado(store.recados[index],store)); }
+  const changes:any={updated_at:new Date().toISOString()};
+  if(req.body?.empresa_id!==undefined){const {data:e}=await supabase.from('empresas').select('id,nome').eq('id',String(req.body.empresa_id)).maybeSingle();if(!e)return res.status(400).json({error:'Empresa inválida'});changes.empresa_id=e.id;changes.empresa_nome=e.nome;}
+  if(req.body?.data_inicio!==undefined||req.body?.data_recado!==undefined){changes.data_inicio=String(req.body.data_inicio||req.body.data_recado);changes.data_recado=changes.data_inicio;}
+  if(req.body?.data_fim!==undefined||req.body?.data_recado!==undefined)changes.data_fim=String(req.body.data_fim||req.body.data_recado);
+  if(req.body?.mensagem!==undefined)changes.mensagem=String(req.body.mensagem).trim();
+  const {data,error}=await supabase.from('recados').update(changes).eq('id',req.params.id).select('*').maybeSingle();if(error)return res.status(500).json({error:'Não foi possível atualizar o recado.',details:error.message});if(!data)return res.status(404).json({error:'Recado não encontrado'});return res.json({...data,data_recado:data.data_inicio,createdAt:data.created_at,updatedAt:data.updated_at});
+});
+router.delete('/recados/:id', requireAuth, requireSupervisor, async (req, res) => {
+  if (!supabase) { const store=readStore(); const index=store.recados.findIndex((item)=>item.id===req.params.id); if(index<0)return res.status(404).json({error:'Recado não encontrado'});store.recados.splice(index,1);writeStore(store);return res.status(204).end(); }
+  const {data,error}=await supabase.from('recados').delete().eq('id',req.params.id).select('id').maybeSingle();if(error)return res.status(500).json({error:'Não foi possível excluir o recado.',details:error.message});if(!data)return res.status(404).json({error:'Recado não encontrado'});return res.status(204).end();
+});
 
 export default router;

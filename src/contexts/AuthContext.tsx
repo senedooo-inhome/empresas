@@ -59,7 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[Auth error]', err);
       let msg = err?.message || 'Não foi possível fazer login.';
       if (err?.status === 401) {
-        msg = 'E-mail ou senha inválidos.';
+        msg = 'Usuário ou senha inválidos.';
       } else if (err?.status === 403) {
         msg = 'Usuário não autorizado para acessar este sistema.';
       } else if (err?.status >= 500) {

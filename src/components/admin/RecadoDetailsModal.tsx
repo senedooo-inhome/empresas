@@ -31,7 +31,9 @@ export const RecadoDetailsModal: React.FC<RecadoDetailsModalProps> = ({
   if (!isOpen || !recado) return null;
 
   const hojeSp = getTodaySaoPaulo();
-  const status = getRecadoStatus(recado.data_recado, hojeSp);
+  const inicio = recado.data_inicio || recado.data_recado;
+  const fim = recado.data_fim || recado.data_recado;
+  const status = hojeSp < inicio ? 'futuro' : hojeSp > fim ? 'expirado' : 'hoje';
 
   const formatDateTime = (isoStr: string) => {
     try {
@@ -79,17 +81,17 @@ export const RecadoDetailsModal: React.FC<RecadoDetailsModalProps> = ({
                 {/* Status Badge */}
                 {status === 'hoje' && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Hoje ({formatDataBr(recado.data_recado)})
+                    Vigente ({formatDataBr(inicio)} a {formatDataBr(fim)})
                   </span>
                 )}
                 {status === 'futuro' && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                    Futuro ({formatDataBr(recado.data_recado)})
+                    Futuro ({formatDataBr(inicio)} a {formatDataBr(fim)})
                   </span>
                 )}
                 {status === 'expirado' && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                    Expirado ({formatDataBr(recado.data_recado)})
+                    Expirado ({formatDataBr(inicio)} a {formatDataBr(fim)})
                   </span>
                 )}
 
@@ -121,7 +123,7 @@ export const RecadoDetailsModal: React.FC<RecadoDetailsModalProps> = ({
                 Data de Validade
               </span>
               <p className="font-bold text-slate-900 text-xs">
-                {formatDataBr(recado.data_recado)}
+                {formatDataBr(inicio)} a {formatDataBr(fim)}
               </p>
             </div>
             <div>

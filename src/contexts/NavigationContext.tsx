@@ -6,7 +6,9 @@ export type AppRoute =
   | '/admin'
   | '/admin/empresas'
   | '/admin/recados'
-  | '/admin/historico';
+  | '/admin/historico'
+  | '/admin/agentes'
+  | '/portal';
 
 interface NavigationContextType {
   currentRoute: string;
@@ -24,7 +26,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       path === '/admin' ||
       path === '/admin/empresas' ||
       path === '/admin/recados' ||
-      path === '/admin/historico';
+      path === '/admin/historico' ||
+      path === '/admin/agentes' ||
+      path === '/portal' ||
+      path.startsWith('/portal/empresa/');
     return isValid ? path : '/login';
   });
 
@@ -44,7 +49,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         path === '/admin' ||
         path === '/admin/empresas' ||
         path === '/admin/recados' ||
-        path === '/admin/historico';
+        path === '/admin/historico' ||
+      path === '/admin/agentes' ||
+      path === '/portal' ||
+      path.startsWith('/portal/empresa/');
 
       if (isValid) {
         setCurrentRoute(path);
@@ -68,7 +76,9 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } else {
       // Authenticated user
-      if (currentRoute === '/login' || currentRoute.startsWith('/portal')) {
+      if (user.role === 'agente') {
+        if (currentRoute === '/login' || currentRoute.startsWith('/admin')) navigate('/portal');
+      } else if (currentRoute === '/login') {
         navigate('/admin');
       }
     }

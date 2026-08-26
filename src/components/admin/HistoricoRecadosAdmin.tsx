@@ -96,7 +96,9 @@ export const HistoricoRecadosAdmin: React.FC = () => {
       .filter((recado) => {
         const empresa = empresasMap.get(recado.empresa_id);
         const empresaNome = empresa ? empresa.nome.toLowerCase() : '';
-        const status = getRecadoStatus(recado.data_recado, hojeSp);
+        const inicio = recado.data_inicio || recado.data_recado;
+        const fim = recado.data_fim || recado.data_recado;
+        const status = hojeSp < inicio ? 'futuro' : hojeSp > fim ? 'expirado' : 'hoje';
 
         // Filter: Empresa
         if (empresaFilter !== 'todas' && recado.empresa_id !== empresaFilter) {
@@ -109,10 +111,10 @@ export const HistoricoRecadosAdmin: React.FC = () => {
         }
 
         // Filter: Período (Data Inicial / Final)
-        if (dataInicio && recado.data_recado < dataInicio) {
+        if (dataInicio && (recado.data_fim || recado.data_recado) < dataInicio) {
           return false;
         }
-        if (dataFim && recado.data_recado > dataFim) {
+        if (dataFim && (recado.data_inicio || recado.data_recado) > dataFim) {
           return false;
         }
 
@@ -128,7 +130,7 @@ export const HistoricoRecadosAdmin: React.FC = () => {
       })
       .sort((a, b) => {
         // Sort by data_recado DESC, then createdAt DESC
-        const compDate = b.data_recado.localeCompare(a.data_recado);
+        const compDate = (b.data_inicio || b.data_recado).localeCompare(a.data_inicio || a.data_recado);
         if (compDate !== 0) return compDate;
         return (b.createdAt || '').localeCompare(a.createdAt || '');
       });
@@ -138,6 +140,8 @@ export const HistoricoRecadosAdmin: React.FC = () => {
   const handleSaveRecado = async (data: {
     empresa_id: string;
     data_recado: string;
+    data_inicio: string;
+    data_fim: string;
     mensagem: string;
     criado_por: string;
   }) => {
@@ -146,6 +150,8 @@ export const HistoricoRecadosAdmin: React.FC = () => {
         await updateRecado(recadoToEdit.id, {
           empresa_id: data.empresa_id,
           data_recado: data.data_recado,
+          data_inicio: data.data_inicio,
+          data_fim: data.data_fim,
           mensagem: data.mensagem,
         });
         showToast('Recado atualizado com sucesso.');
@@ -278,9 +284,9 @@ export const HistoricoRecadosAdmin: React.FC = () => {
               className="w-full px-3 py-2 bg-slate-50/70 border border-slate-200 rounded-lg text-slate-900 text-xs font-medium focus:outline-none focus:bg-white focus:border-sky-500"
             >
               <option value="todos">Todos os Status ({recados.length})</option>
-              <option value="hoje">Hoje ({recados.filter((r) => r.data_recado === hojeSp).length})</option>
-              <option value="futuro">Futuro ({recados.filter((r) => r.data_recado > hojeSp).length})</option>
-              <option value="expirado">Expirado ({recados.filter((r) => r.data_recado < hojeSp).length})</option>
+              <option value="hoje">Vigentes hoje ({recados.filter((r) => (r.data_inicio || r.data_recado) <= hojeSp && (r.data_fim || r.data_recado) >= hojeSp).length})</option>
+              <option value="futuro">Futuro ({recados.filter((r) => (r.data_inicio || r.data_recado) > hojeSp).length})</option>
+              <option value="expirado">Expirado ({recados.filter((r) => (r.data_fim || r.data_recado) < hojeSp).length})</option>
             </select>
           </div>
         </div>
@@ -397,7 +403,9 @@ export const HistoricoRecadosAdmin: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {filteredRecados.map((recado) => {
                   const empresa = empresasMap.get(recado.empresa_id);
-                  const status = getRecadoStatus(recado.data_recado, hojeSp);
+                  const inicio = recado.data_inicio || recado.data_recado;
+                  const fim = recado.data_fim || recado.data_recado;
+                  const status = hojeSp < inicio ? 'futuro' : hojeSp > fim ? 'expirado' : 'hoje';
 
                   return (
                     <tr
@@ -441,7 +449,7 @@ export const HistoricoRecadosAdmin: React.FC = () => {
 
                       {/* Data de Validade */}
                       <td className="py-3.5 px-4 font-semibold text-slate-700 whitespace-nowrap">
-                        {formatDataBr(recado.data_recado)}
+                        {formatDataBr(recado.data_inicio || recado.data_recado)} a {formatDataBr(recado.data_fim || recado.data_recado)}
                       </td>
 
                       {/* Recado Preview */}

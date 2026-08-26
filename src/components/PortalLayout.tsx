@@ -7,6 +7,7 @@ import { Empresa } from '../types';
 import { subscribeEmpresas } from '../lib/firestoreService';
 import { PortalEmpresasGrid } from './portal/PortalEmpresasGrid';
 import { EmpresaDetalheOperacional } from './portal/EmpresaDetalheOperacional';
+import { RecadosIniciaisAgente } from './portal/RecadosIniciaisAgente';
 
 export const PortalLayout: React.FC = () => {
   const { user, logout, isSupervisao } = useAuth();
@@ -104,7 +105,10 @@ export const PortalLayout: React.FC = () => {
         {isEmpresaDetail && empresaIdFromRoute ? (
           <EmpresaDetalheOperacional empresaId={empresaIdFromRoute} />
         ) : (
-          <PortalEmpresasGrid empresas={empresas} loading={loading} />
+          <div className="space-y-6">
+            <RecadosIniciaisAgente />
+            <PortalEmpresasGrid empresas={empresas} loading={loading} />
+          </div>
         )}
       </main>
 

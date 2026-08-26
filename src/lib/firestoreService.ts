@@ -1,4 +1,4 @@
-import { Empresa, Recado, UserProfile } from '../types';
+import { Agente, Empresa, Recado, RecadoLeituraStatus, UserProfile } from '../types';
 import { apiRequest } from './apiClient';
 import { getTodaySaoPaulo } from './firebase';
 
@@ -295,4 +295,41 @@ export async function uploadEmpresaLogo(empresaId: string, file: File): Promise<
 // ==========================================
 export async function seedInitialDataIfEmpty(): Promise<void> {
   // Inicialização controlada diretamente pelo backend
+}
+
+
+// ==========================================
+// 6. AGENTES / DASHBOARD / CIÊNCIA DE RECADOS
+// ==========================================
+export async function getAgentes(): Promise<Agente[]> {
+  return apiRequest<Agente[]>('/api/agentes');
+}
+
+export async function createAgente(payload: {
+  nome: string;
+  ramal: string;
+  codigo_sonax: string;
+  nicho_agente: 'SAC' | 'CLINICAS' | 'SAC & CLINICA';
+  turno: string;
+  senha: string;
+}): Promise<Agente> {
+  return apiRequest<Agente>('/api/agentes', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDashboardSupervisao(data?: string): Promise<any> {
+  const query = data ? `?data=${encodeURIComponent(data)}` : '';
+  return apiRequest<any>(`/api/dashboard${query}`);
+}
+
+export async function getRecadosVigentesComLeitura(empresaId?: string, data?: string): Promise<RecadoLeituraStatus[]> {
+  const params = new URLSearchParams();
+  if (empresaId) params.set('empresa_id', empresaId);
+  if (data) params.set('data', data);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiRequest<RecadoLeituraStatus[]>(`/api/recados/leituras${query}`);
+}
+
+export async function confirmarLeituraRecado(recadoId: string): Promise<void> {
+  await apiRequest('/api/recados/leituras', { method: 'POST', body: JSON.stringify({ recado_id: recadoId }) });
+  notifyChange();
 }

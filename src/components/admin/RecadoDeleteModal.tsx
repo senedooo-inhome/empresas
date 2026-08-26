@@ -71,7 +71,7 @@ export const RecadoDeleteModal: React.FC<RecadoDeleteModalProps> = ({
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1 text-slate-600">
             <div className="text-[11px] font-semibold text-slate-700">
-              Data: {formatDataBr(recado.data_recado)}
+              Período: {formatDataBr(recado.data_inicio || recado.data_recado)} a {formatDataBr(recado.data_fim || recado.data_recado)}
             </div>
             <p className="text-xs italic line-clamp-3 text-slate-600">
               "{recado.mensagem}"

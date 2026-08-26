@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 
 export type Role = 'supervisao' | 'agente';
-export type AuthUser = { id: string; email: string; nome: string; role: Role };
+export type AuthUser = { id: string; email: string; nome: string; role: Role; login?: string };
 
 type NodeRequest = {
   method?: string;
@@ -206,7 +206,8 @@ export function mapRecado(row: any) {
   if (!row) return row;
   return {
     id: row.id, empresa_id: row.empresa_id, empresa_nome: row.empresa_nome,
-    data_recado: row.data_recado, mensagem: row.mensagem, criado_por: row.criado_por,
+    data_recado: row.data_inicio || row.data_recado, data_inicio: row.data_inicio || row.data_recado, data_fim: row.data_fim || row.data_recado,
+    mensagem: row.mensagem, criado_por: row.criado_por,
     criado_por_email: row.criado_por_email, createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }

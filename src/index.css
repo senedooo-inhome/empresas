@@ -13,3 +13,6 @@
 @media (prefers-reduced-motion: reduce) {
   .recado-do-dia-alerta { animation: none; }
 }
+
+.input-sonax { width: 100%; padding: 0.625rem 0.75rem; border: 1px solid rgb(203 213 225); border-radius: 0.5rem; font-size: 0.75rem; color: rgb(15 23 42); outline: none; }
+.input-sonax:focus { border-color: rgb(14 165 233); box-shadow: 0 0 0 1px rgb(14 165 233); }
