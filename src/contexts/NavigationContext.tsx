@@ -8,7 +8,9 @@ export type AppRoute =
   | '/admin/recados'
   | '/admin/historico'
   | '/admin/agentes'
-  | '/portal';
+  | '/portal'
+  | '/portal/clinica'
+  | '/portal/sac';
 
 interface NavigationContextType {
   currentRoute: string;
@@ -29,6 +31,8 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       path === '/admin/historico' ||
       path === '/admin/agentes' ||
       path === '/portal' ||
+      path === '/portal/clinica' ||
+      path === '/portal/sac' ||
       path.startsWith('/portal/empresa/');
     return isValid ? path : '/login';
   });
@@ -50,9 +54,11 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         path === '/admin/empresas' ||
         path === '/admin/recados' ||
         path === '/admin/historico' ||
-      path === '/admin/agentes' ||
-      path === '/portal' ||
-      path.startsWith('/portal/empresa/');
+        path === '/admin/agentes' ||
+        path === '/portal' ||
+        path === '/portal/clinica' ||
+        path === '/portal/sac' ||
+        path.startsWith('/portal/empresa/');
 
       if (isValid) {
         setCurrentRoute(path);

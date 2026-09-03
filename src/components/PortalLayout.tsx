@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { LogOut, User, Building2, ArrowLeft } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, LogOut, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { SonaxLogo } from './SonaxLogo';
-import { Empresa } from '../types';
+import { Empresa, NichoEmpresa } from '../types';
 import { subscribeEmpresas } from '../lib/firestoreService';
 import { PortalEmpresasGrid } from './portal/PortalEmpresasGrid';
 import { EmpresaDetalheOperacional } from './portal/EmpresaDetalheOperacional';
 import { RecadosIniciaisAgente } from './portal/RecadosIniciaisAgente';
+import { PortalNichoSelector } from './portal/PortalNichoSelector';
 
 export const PortalLayout: React.FC = () => {
   const { user, logout, isSupervisao } = useAuth();
@@ -41,6 +42,35 @@ export const PortalLayout: React.FC = () => {
   const empresaIdFromRoute = isEmpresaDetail
     ? currentRoute.replace('/portal/empresa/', '').trim()
     : null;
+
+  // O nicho agora é controlado pela rota para permanecer selecionado mesmo após atualizar a página.
+  const nichoSelecionado: NichoEmpresa | null =
+    currentRoute === '/portal/clinica'
+      ? 'CLINICA'
+      : currentRoute === '/portal/sac'
+        ? 'SAC'
+        : null;
+
+  const empresasClinica = useMemo(
+    () => empresas.filter((empresa) => empresa.nicho?.trim().toUpperCase() === 'CLINICA'),
+    [empresas]
+  );
+
+  const empresasSac = useMemo(
+    () => empresas.filter((empresa) => empresa.nicho?.trim().toUpperCase() === 'SAC'),
+    [empresas]
+  );
+
+  const empresasDoNicho = useMemo(() => {
+    if (nichoSelecionado === 'CLINICA') return empresasClinica;
+    if (nichoSelecionado === 'SAC') return empresasSac;
+    return [];
+  }, [nichoSelecionado, empresasClinica, empresasSac]);
+
+  const empresaIdsDoNicho = useMemo(
+    () => empresasDoNicho.map((empresa) => empresa.id),
+    [empresasDoNicho]
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col" id="portal-layout">
@@ -104,11 +134,44 @@ export const PortalLayout: React.FC = () => {
       <main className="flex-1 p-4 sm:p-8 max-w-6xl w-full mx-auto flex flex-col justify-start">
         {isEmpresaDetail && empresaIdFromRoute ? (
           <EmpresaDetalheOperacional empresaId={empresaIdFromRoute} />
-        ) : (
+        ) : nichoSelecionado ? (
           <div className="space-y-6">
-            <RecadosIniciaisAgente />
-            <PortalEmpresasGrid empresas={empresas} loading={loading} />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <span>Portal</span>
+                  <span>/</span>
+                  <span className={nichoSelecionado === 'CLINICA' ? 'text-emerald-700' : 'text-sky-700'}>
+                    {nichoSelecionado === 'CLINICA' ? 'Clínica' : 'SAC'}
+                  </span>
+                </div>
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 mt-1">
+                  Atendimento {nichoSelecionado === 'CLINICA' ? 'Clínica' : 'SAC'}
+                </h1>
+              </div>
+
+              <button
+                type="button"
+                id="btn-trocar-nicho"
+                onClick={() => navigate('/portal')}
+                className="inline-flex self-start sm:self-auto items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 shadow-2xs transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Trocar nicho
+              </button>
+            </div>
+
+            <RecadosIniciaisAgente empresaIds={empresaIdsDoNicho} />
+            <PortalEmpresasGrid empresas={empresasDoNicho} loading={loading} />
           </div>
+        ) : (
+          <PortalNichoSelector
+            onSelectClinica={() => navigate('/portal/clinica')}
+            onSelectSac={() => navigate('/portal/sac')}
+            clinicaCount={empresasClinica.length}
+            sacCount={empresasSac.length}
+            loading={loading}
+          />
         )}
       </main>
 
