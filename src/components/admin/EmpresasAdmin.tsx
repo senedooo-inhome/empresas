@@ -316,8 +316,8 @@ export const EmpresasAdmin: React.FC = () => {
           </div>
         ) : (
           /* Responsive Table */
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="w-full min-w-0 overflow-x-hidden">
+            <table className="w-full table-fixed text-left text-xs border-collapse sonax-fit-table">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
                   <th className="py-3 px-4 w-16">Logo</th>

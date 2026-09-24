@@ -316,6 +316,30 @@ export async function createAgente(payload: {
   return apiRequest<Agente>('/api/operacional?action=agentes', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export async function updateAgente(
+  id: string,
+  payload: {
+    nome: string;
+    ramal: string;
+    codigo_sonax: string;
+    nicho_agente: 'SAC' | 'CLINICAS' | 'SAC & CLINICA';
+    turno: string;
+    senha?: string;
+  },
+): Promise<Agente> {
+  return apiRequest<Agente>('/api/operacional?action=agentes', {
+    method: 'PUT',
+    body: JSON.stringify({ id, ...payload }),
+  });
+}
+
+export async function deleteAgente(id: string): Promise<void> {
+  await apiRequest('/api/operacional?action=agentes', {
+    method: 'DELETE',
+    body: JSON.stringify({ id }),
+  });
+}
+
 export async function getDashboardSupervisao(data?: string): Promise<any> {
   const query = data ? `?data=${encodeURIComponent(data)}` : '';
   return apiRequest<any>(`/api/operacional?action=dashboard${query ? `&${query.slice(1)}` : ''}`);

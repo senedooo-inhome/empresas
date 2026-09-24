@@ -125,7 +125,7 @@ export const AdminLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col" id="admin-layout">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-50 flex flex-col" id="admin-layout">
       {/* Header Topo */}
       <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
         <div className="flex items-center gap-3">
@@ -178,9 +178,9 @@ export const AdminLayout: React.FC = () => {
       </header>
 
       {/* Main Body with Sidebar */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex min-w-0 overflow-hidden">
         {/* Sidebar Desktop */}
-        <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 flex-shrink-0">
+        <aside className="hidden md:flex flex-col w-56 xl:w-64 bg-white border-r border-slate-200 flex-shrink-0">
           <div className="p-5 border-b border-slate-100">
             <SonaxLogo variant="brand" size="md" showSubtitle={true} />
           </div>
@@ -276,8 +276,8 @@ export const AdminLayout: React.FC = () => {
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="max-w-5xl mx-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 lg:p-6 xl:p-8">
+          <div className="w-full max-w-[1600px] min-w-0 mx-auto">
             {renderContent()}
           </div>
         </main>

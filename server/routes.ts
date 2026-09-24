@@ -109,6 +109,8 @@ router.all('/operacional', requireAuth, async (req: any, res) => {
     if (req.user?.role !== 'supervisao') return res.status(403).json({ error: 'Acesso permitido somente para supervisão.' });
     if (!supabase) return res.status(500).json({ error: 'Cadastro de agentes exige Supabase configurado.' });
 
+    const gestorAutorizado = String(req.user?.email || '').trim().toLowerCase() === 'supervisao@sonax.net.br';
+
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('usuarios')
@@ -147,6 +149,65 @@ router.all('/operacional', requireAuth, async (req: any, res) => {
       }
       return res.status(201).json(data);
     }
+
+    if (req.method === 'PUT') {
+      if (!gestorAutorizado) return res.status(403).json({ error: 'Somente supervisao@sonax.net.br pode editar agentes.' });
+
+      const id = String(req.body?.id || '').trim();
+      const nome = String(req.body?.nome || '').trim();
+      const login = String(req.body?.login || nome).trim().replace(/\s+/g, ' ');
+      const ramal = String(req.body?.ramal || '').trim();
+      const codigo_sonax = String(req.body?.codigo_sonax || '26253').trim() || '26253';
+      const nicho_agente = String(req.body?.nicho_agente || '').trim();
+      const turno = String(req.body?.turno || '').trim();
+      const senha = String(req.body?.senha || '');
+
+      if (!id || !nome || !login || !ramal || !turno) return res.status(400).json({ error: 'Agente, nome, ramal e turno são obrigatórios.' });
+      if (!['SAC', 'CLINICAS', 'SAC & CLINICA'].includes(nicho_agente)) return res.status(400).json({ error: 'Nicho inválido.' });
+      if (senha && senha.length < 6) return res.status(400).json({ error: 'A nova senha deve possuir pelo menos 6 caracteres.' });
+
+      const { data: agente, error: agenteError } = await supabase.from('usuarios').select('id, auth_user_id, email, login, nome, role').eq('id', id).eq('role', 'agente').maybeSingle();
+      if (agenteError) return res.status(500).json({ error: 'Não foi possível consultar o agente.', details: agenteError.message });
+      if (!agente) return res.status(404).json({ error: 'Agente não encontrado.' });
+
+      const { data: duplicate, error: duplicateError } = await supabase.from('usuarios').select('id').ilike('login', login).neq('id', id).maybeSingle();
+      if (duplicateError) return res.status(500).json({ error: 'Não foi possível validar o login do agente.', details: duplicateError.message });
+      if (duplicate) return res.status(409).json({ error: 'Já existe outro agente com esse login.' });
+
+      if (agente.auth_user_id) {
+        const authChanges: any = { user_metadata: { nome, login, role: 'agente' } };
+        if (senha) authChanges.password = senha;
+        const { error: authError } = await supabase.auth.admin.updateUserById(String(agente.auth_user_id), authChanges);
+        if (authError) return res.status(500).json({ error: 'Não foi possível atualizar o login do agente no Supabase Auth.', details: authError.message });
+      }
+
+      const { data, error } = await supabase.from('usuarios').update({ login, nome, ramal, codigo_sonax, nicho_agente, turno }).eq('id', id).eq('role', 'agente').select('*').maybeSingle();
+      if (error) return res.status(500).json({ error: 'Não foi possível atualizar o agente.', details: error.message });
+      if (!data) return res.status(404).json({ error: 'Agente não encontrado.' });
+      return res.json(data);
+    }
+
+    if (req.method === 'DELETE') {
+      if (!gestorAutorizado) return res.status(403).json({ error: 'Somente supervisao@sonax.net.br pode excluir agentes.' });
+
+      const id = String(req.body?.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'Agente obrigatório.' });
+
+      const { data: agente, error: agenteError } = await supabase.from('usuarios').select('id, auth_user_id, nome, role').eq('id', id).eq('role', 'agente').maybeSingle();
+      if (agenteError) return res.status(500).json({ error: 'Não foi possível consultar o agente.', details: agenteError.message });
+      if (!agente) return res.status(404).json({ error: 'Agente não encontrado.' });
+
+      const { error: deleteProfileError } = await supabase.from('usuarios').delete().eq('id', id).eq('role', 'agente');
+      if (deleteProfileError) return res.status(500).json({ error: 'Não foi possível excluir o perfil do agente.', details: deleteProfileError.message });
+
+      if (agente.auth_user_id) {
+        const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(String(agente.auth_user_id));
+        if (deleteAuthError) return res.json({ success: true, warning: 'O perfil foi excluído, mas o usuário do Supabase Auth não pôde ser removido automaticamente.', details: deleteAuthError.message });
+      }
+
+      return res.json({ success: true });
+    }
+
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
@@ -243,6 +304,43 @@ router.post('/agentes', requireAuth, requireSupervisor, async (req, res) => {
   const {data,error}=await supabase.from('usuarios').insert({auth_user_id:authData.user.id,email,login,nome,role:'agente',ramal,codigo_sonax,nicho_agente,turno,ativo:true}).select('*').single();
   if(error){await supabase.auth.admin.deleteUser(authData.user.id);return res.status(500).json({error:'Não foi possível salvar o perfil do agente.'});}
   res.status(201).json(data);
+});
+
+router.put('/agentes/:id', requireAuth, requireSupervisor, async (req:any, res) => {
+  if (String(req.user?.email || '').trim().toLowerCase() !== 'supervisao@sonax.net.br') return res.status(403).json({ error: 'Somente supervisao@sonax.net.br pode editar agentes.' });
+  if (!supabase) return res.status(500).json({ error: 'Cadastro de agentes exige Supabase configurado.' });
+
+  const id=String(req.params.id||'').trim(), nome=String(req.body?.nome||'').trim(), login=String(req.body?.login||req.body?.nome||'').trim().replace(/\s+/g,' '), ramal=String(req.body?.ramal||'').trim(), codigo_sonax=String(req.body?.codigo_sonax||'26253').trim()||'26253', nicho_agente=String(req.body?.nicho_agente||'').trim(), turno=String(req.body?.turno||'').trim(), senha=String(req.body?.senha||'');
+  if(!id||!nome||!login||!ramal||!turno)return res.status(400).json({error:'Agente, nome, ramal e turno são obrigatórios.'});
+  if(!['SAC','CLINICAS','SAC & CLINICA'].includes(nicho_agente))return res.status(400).json({error:'Nicho inválido.'});
+  if(senha&&senha.length<6)return res.status(400).json({error:'A nova senha deve possuir pelo menos 6 caracteres.'});
+
+  const {data:agente,error:agenteError}=await supabase.from('usuarios').select('id,auth_user_id').eq('id',id).eq('role','agente').maybeSingle();
+  if(agenteError)return res.status(500).json({error:'Não foi possível consultar o agente.',details:agenteError.message});
+  if(!agente)return res.status(404).json({error:'Agente não encontrado.'});
+  const {data:duplicate,error:duplicateError}=await supabase.from('usuarios').select('id').ilike('login',login).neq('id',id).maybeSingle();
+  if(duplicateError)return res.status(500).json({error:'Não foi possível validar o login do agente.',details:duplicateError.message});
+  if(duplicate)return res.status(409).json({error:'Já existe outro agente com esse login.'});
+
+  if(agente.auth_user_id){const changes:any={user_metadata:{nome,login,role:'agente'}};if(senha)changes.password=senha;const {error:authError}=await supabase.auth.admin.updateUserById(String(agente.auth_user_id),changes);if(authError)return res.status(500).json({error:'Não foi possível atualizar o login do agente no Supabase Auth.',details:authError.message});}
+  const {data,error}=await supabase.from('usuarios').update({login,nome,ramal,codigo_sonax,nicho_agente,turno}).eq('id',id).eq('role','agente').select('*').maybeSingle();
+  if(error)return res.status(500).json({error:'Não foi possível atualizar o agente.',details:error.message});
+  if(!data)return res.status(404).json({error:'Agente não encontrado.'});
+  return res.json(data);
+});
+
+router.delete('/agentes/:id', requireAuth, requireSupervisor, async (req:any, res) => {
+  if (String(req.user?.email || '').trim().toLowerCase() !== 'supervisao@sonax.net.br') return res.status(403).json({ error: 'Somente supervisao@sonax.net.br pode excluir agentes.' });
+  if (!supabase) return res.status(500).json({ error: 'Cadastro de agentes exige Supabase configurado.' });
+
+  const id=String(req.params.id||'').trim();
+  const {data:agente,error:agenteError}=await supabase.from('usuarios').select('id,auth_user_id').eq('id',id).eq('role','agente').maybeSingle();
+  if(agenteError)return res.status(500).json({error:'Não foi possível consultar o agente.',details:agenteError.message});
+  if(!agente)return res.status(404).json({error:'Agente não encontrado.'});
+  const {error:deleteProfileError}=await supabase.from('usuarios').delete().eq('id',id).eq('role','agente');
+  if(deleteProfileError)return res.status(500).json({error:'Não foi possível excluir o perfil do agente.',details:deleteProfileError.message});
+  if(agente.auth_user_id){const {error:deleteAuthError}=await supabase.auth.admin.deleteUser(String(agente.auth_user_id));if(deleteAuthError)return res.json({success:true,warning:'O perfil foi excluído, mas o usuário do Supabase Auth não pôde ser removido automaticamente.',details:deleteAuthError.message});}
+  return res.json({success:true});
 });
 
 router.get('/dashboard', requireAuth, requireSupervisor, async (_req,res)=>{

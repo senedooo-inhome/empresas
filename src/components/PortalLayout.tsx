@@ -73,7 +73,7 @@ export const PortalLayout: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col" id="portal-layout">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-50 flex flex-col" id="portal-layout">
       {/* Clean Top Header */}
       <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
         <div className="flex items-center gap-4">
@@ -131,7 +131,7 @@ export const PortalLayout: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-8 max-w-6xl w-full mx-auto flex flex-col justify-start">
+      <main className="flex-1 min-w-0 overflow-x-hidden p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto flex flex-col justify-start">
         {isEmpresaDetail && empresaIdFromRoute ? (
           <EmpresaDetalheOperacional empresaId={empresaIdFromRoute} />
         ) : nichoSelecionado ? (
