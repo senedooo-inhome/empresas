@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
 import { normalizeDate, parseBool, parseJson } from './_sheets.js';
 
 export type Role = 'supervisao' | 'agente';
@@ -70,43 +70,37 @@ export function json(data: unknown, status = 200, headers: HeadersInit = {}) {
 }
 
 export function getEnv() {
-  const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/rest\/v1\/?$/, '');
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
   const jwtSecret = process.env.JWT_SECRET;
-
-  const missing: string[] = [];
-  if (!supabaseUrl) missing.push('SUPABASE_URL');
-  if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
-  if (!anonKey) missing.push('SUPABASE_ANON_KEY');
-  if (!jwtSecret) missing.push('JWT_SECRET');
-
-  if (missing.length) {
-    const error = new Error(`Configuração do servidor incompleta: ${missing.join(', ')}`);
-    (error as any).missing = missing;
+  if (!jwtSecret) {
+    const error = new Error('Configuração do servidor incompleta: JWT_SECRET');
+    (error as any).missing = ['JWT_SECRET'];
     throw error;
   }
-
-  return { supabaseUrl, serviceKey, anonKey, jwtSecret } as {
-    supabaseUrl: string;
-    serviceKey: string;
-    anonKey: string;
-    jwtSecret: string;
-  };
+  return { jwtSecret };
 }
 
-export function getSupabase() {
-  const { supabaseUrl, serviceKey } = getEnv();
-  return createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+// -----------------------------------------------------------------------------
+// Senhas (aba "usuarios" da planilha guarda só o hash bcrypt, nunca a senha)
+// -----------------------------------------------------------------------------
+export function hashPassword(password: string) {
+  return bcrypt.hashSync(password, 10);
 }
 
-export function getSupabaseAuth() {
-  const { supabaseUrl, anonKey } = getEnv();
-  return createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
+export function checkPassword(password: string, hash: string) {
+  if (!password || !hash) return false;
+  try { return bcrypt.compareSync(password, hash); } catch { return false; }
+}
+
+/** Identificador do usuário usado em acessos e confirmações de leitura. */
+export function userUid(row: Record<string, any>) {
+  return String(row.auth_user_id || row.id || '');
+}
+
+/** Dados do usuário que podem sair da API (sem o hash da senha). */
+export function mapUsuario(row: any) {
+  if (!row) return row;
+  const { password_hash, _row, ...rest } = row;
+  return { ...rest, ativo: parseBool(row.ativo, true) };
 }
 
 export function getToken(request: Request): string | null {

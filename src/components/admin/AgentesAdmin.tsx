@@ -114,7 +114,7 @@ export const AgentesAdmin: React.FC = () => {
   const excluir = async (agente: Agente) => {
     if (!canManageAgents) return;
     const confirmou = window.confirm(
-      `Excluir o agente "${agente.nome}"?\n\nO login do agente também será removido do Supabase Auth.`,
+      `Excluir o agente "${agente.nome}"?\n\nO login do agente também será removido.`,
     );
     if (!confirmou) return;
 

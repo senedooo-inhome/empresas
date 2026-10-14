@@ -24,7 +24,7 @@ async function startServer() {
       status: 'ok',
       service: 'Sonax In Home — Portal Operacional',
       database: 'Google Sheets',
-      auth: 'Supabase Authentication + HttpOnly Cookie',
+      auth: 'Google Sheets (bcrypt) + HttpOnly Cookie',
       fusoHorario: 'America/Sao_Paulo',
       timestamp: new Date().toISOString(),
     });

@@ -1,7 +1,7 @@
 // =============================================================================
 // Banco de dados em Google Sheets
 // -----------------------------------------------------------------------------
-// Cada "tabela" é uma aba da planilha. A linha 1 de cada aba é o cabeçalho
+// Cada "tabela" é uma aba da planilha (inclusive os usuários/logins). A linha 1 de cada aba é o cabeçalho
 // (nomes das colunas) e cada linha abaixo é um registro.
 //
 // O acesso é feito pela API oficial do Google Sheets com uma conta de serviço
@@ -16,10 +16,11 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import jwt from 'jsonwebtoken';
 
-export type TableName = 'empresas' | 'recados' | 'agente_acessos' | 'recados_leituras';
+export type TableName = 'usuarios' | 'empresas' | 'recados' | 'agente_acessos' | 'recados_leituras';
 export type SheetRow = Record<string, string> & { _row?: number };
 
 export const TABLES: Record<TableName, string[]> = {
+  usuarios: ['id', 'auth_user_id', 'email', 'login', 'nome', 'role', 'password_hash', 'ramal', 'codigo_sonax', 'nicho_agente', 'turno', 'ativo', 'created_at', 'updated_at'],
   empresas: ['id', 'nome', 'nicho', 'segmento', 'link_sistema', 'links_sistema', 'resumo', 'logo_url', 'ativo', 'created_at', 'updated_at'],
   recados: ['id', 'empresa_id', 'empresa_nome', 'data_recado', 'data_inicio', 'data_fim', 'mensagem', 'criado_por', 'criado_por_email', 'created_at', 'updated_at'],
   agente_acessos: ['id', 'usuario_id', 'data_acesso', 'login_em'],

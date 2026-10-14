@@ -1,5 +1,7 @@
-import { authOrResponse, getSupabase, json, mapRecado, nodeHandler, readJson, recadoVigente, serverError, sortRecados } from './_core.js';
-import { deleteRows, insertRow, listRows, newId, nowIso, sameInstant } from './_sheets.js';
+import { authOrResponse, hashPassword, json, mapRecado, mapUsuario, nodeHandler, readJson, recadoVigente, serverError, sortRecados, userUid } from './_core.js';
+import { deleteRows, insertRow, listRows, newId, nowIso, parseBool, sameInstant, updateRow } from './_sheets.js';
+
+const NICHOS = ['SAC', 'CLINICAS', 'SAC & CLINICA'];
 
 function normalizeLogin(value: string) {
   return value.trim().replace(/\s+/g, ' ');
@@ -25,27 +27,27 @@ export default nodeHandler(async function handler(request: Request) {
     const auth = authOrResponse(request, action === 'agentes' || action === 'dashboard');
     if (auth.response || !auth.user) return auth.response!;
 
-    const supabase = getSupabase();
-
     // -----------------------------------------------------------------------
-    // AGENTES - somente supervisão
+    // AGENTES - somente supervisão (aba "usuarios" da planilha)
     // Editar/excluir: exclusivamente supervisao@sonax.net.br
     // -----------------------------------------------------------------------
     if (action === 'agentes') {
       const gestorAutorizado = String(auth.user.email || '').trim().toLowerCase() === 'supervisao@sonax.net.br';
+      const usuarios = await listRows('usuarios');
+      const loginEmUso = (login: string, exceptId = '') =>
+        usuarios.some((u) => u.id !== exceptId && u.login.trim().toLowerCase() === login.toLowerCase());
 
       if (request.method === 'GET') {
-        const { data, error } = await supabase
-          .from('usuarios')
-          .select('id, auth_user_id, email, login, nome, role, ramal, codigo_sonax, nicho_agente, turno, ativo, created_at, updated_at')
-          .eq('role', 'agente')
-          .order('nome', { ascending: true });
-        if (error) return json({ error: 'Não foi possível consultar os agentes.', details: error.message }, 500);
-        return json(data || []);
+        const agentes = usuarios
+          .filter((u) => u.role === 'agente')
+          .map(mapUsuario)
+          .sort((a: any, b: any) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+        return json(agentes);
       }
 
+      const body = await readJson(request);
+
       if (request.method === 'POST') {
-        const body = await readJson(request);
         const nome = String(body?.nome || '').trim();
         const login = normalizeLogin(String(body?.login || nome));
         const ramal = String(body?.ramal || '').trim();
@@ -57,48 +59,28 @@ export default nodeHandler(async function handler(request: Request) {
         if (!nome || !login || !ramal || !turno || !senha) {
           return json({ error: 'Nome, ramal, turno e senha são obrigatórios.' }, 400);
         }
-        if (!['SAC', 'CLINICAS', 'SAC & CLINICA'].includes(nicho)) {
-          return json({ error: 'Nicho inválido.' }, 400);
-        }
+        if (!NICHOS.includes(nicho)) return json({ error: 'Nicho inválido.' }, 400);
         if (senha.length < 6) return json({ error: 'A senha deve possuir pelo menos 6 caracteres.' }, 400);
+        if (loginEmUso(login)) return json({ error: 'Já existe um agente com esse login.' }, 409);
 
-        const { data: duplicate, error: duplicateError } = await supabase
-          .from('usuarios')
-          .select('id')
-          .ilike('login', login)
-          .maybeSingle();
-        if (duplicateError) return json({ error: 'Não foi possível validar o login do agente.', details: duplicateError.message }, 500);
-        if (duplicate) return json({ error: 'Já existe um agente com esse login.' }, 409);
-
-        const email = `${slugify(login)}.${Date.now().toString(36)}@agentes.sonax.net.br`;
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email,
-          password: senha,
-          email_confirm: true,
-          user_metadata: { nome, login, role: 'agente' },
-        });
-        if (authError || !authData.user) {
-          return json({ error: 'Não foi possível criar o login no Supabase Auth.', details: authError?.message }, 500);
-        }
-
-        const payload = {
-          auth_user_id: authData.user.id,
-          email,
+        const now = nowIso();
+        const saved = await insertRow('usuarios', {
+          id: newId('usr'),
+          auth_user_id: '',
+          email: `${slugify(login)}.${Date.now().toString(36)}@agentes.sonax.net.br`,
           login,
           nome,
           role: 'agente',
+          password_hash: hashPassword(senha),
           ramal,
           codigo_sonax: codigoSonax,
           nicho_agente: nicho,
           turno,
           ativo: true,
-        };
-        const { data, error } = await supabase.from('usuarios').insert(payload).select('*').single();
-        if (error) {
-          await supabase.auth.admin.deleteUser(authData.user.id).catch(() => undefined);
-          return json({ error: 'Não foi possível salvar o perfil do agente.', details: error.message }, 500);
-        }
-        return json(data, 201);
+          created_at: now,
+          updated_at: now,
+        });
+        return json(mapUsuario(saved), 201);
       }
 
       if (request.method === 'PUT') {
@@ -106,7 +88,6 @@ export default nodeHandler(async function handler(request: Request) {
           return json({ error: 'Somente supervisao@sonax.net.br pode editar agentes.' }, 403);
         }
 
-        const body = await readJson(request);
         const id = String(body?.id || '').trim();
         const nome = String(body?.nome || '').trim();
         const login = normalizeLogin(String(body?.login || nome));
@@ -119,50 +100,19 @@ export default nodeHandler(async function handler(request: Request) {
         if (!id || !nome || !login || !ramal || !turno) {
           return json({ error: 'Agente, nome, ramal e turno são obrigatórios.' }, 400);
         }
-        if (!['SAC', 'CLINICAS', 'SAC & CLINICA'].includes(nicho)) {
-          return json({ error: 'Nicho inválido.' }, 400);
-        }
+        if (!NICHOS.includes(nicho)) return json({ error: 'Nicho inválido.' }, 400);
         if (senha && senha.length < 6) {
           return json({ error: 'A nova senha deve possuir pelo menos 6 caracteres.' }, 400);
         }
-
-        const { data: agente, error: agenteError } = await supabase
-          .from('usuarios')
-          .select('id, auth_user_id, email, login, nome, role')
-          .eq('id', id)
-          .eq('role', 'agente')
-          .maybeSingle();
-        if (agenteError) return json({ error: 'Não foi possível consultar o agente.', details: agenteError.message }, 500);
+        const agente = usuarios.find((u) => u.id === id && u.role === 'agente');
         if (!agente) return json({ error: 'Agente não encontrado.' }, 404);
+        if (loginEmUso(login, id)) return json({ error: 'Já existe outro agente com esse login.' }, 409);
 
-        const { data: duplicate, error: duplicateError } = await supabase
-          .from('usuarios')
-          .select('id')
-          .ilike('login', login)
-          .neq('id', id)
-          .maybeSingle();
-        if (duplicateError) return json({ error: 'Não foi possível validar o login do agente.', details: duplicateError.message }, 500);
-        if (duplicate) return json({ error: 'Já existe outro agente com esse login.' }, 409);
-
-        if (agente.auth_user_id) {
-          const authChanges: any = { user_metadata: { nome, login, role: 'agente' } };
-          if (senha) authChanges.password = senha;
-          const { error: authError } = await supabase.auth.admin.updateUserById(String(agente.auth_user_id), authChanges);
-          if (authError) {
-            return json({ error: 'Não foi possível atualizar o login do agente no Supabase Auth.', details: authError.message }, 500);
-          }
-        }
-
-        const { data, error } = await supabase
-          .from('usuarios')
-          .update({ login, nome, ramal, codigo_sonax: codigoSonax, nicho_agente: nicho, turno })
-          .eq('id', id)
-          .eq('role', 'agente')
-          .select('*')
-          .maybeSingle();
-        if (error) return json({ error: 'Não foi possível atualizar o agente.', details: error.message }, 500);
-        if (!data) return json({ error: 'Agente não encontrado.' }, 404);
-        return json(data);
+        const changes: Record<string, unknown> = { login, nome, ramal, codigo_sonax: codigoSonax, nicho_agente: nicho, turno, updated_at: nowIso() };
+        if (senha) changes.password_hash = hashPassword(senha);
+        const saved = await updateRow('usuarios', id, changes);
+        if (!saved) return json({ error: 'Agente não encontrado.' }, 404);
+        return json(mapUsuario(saved));
       }
 
       if (request.method === 'DELETE') {
@@ -170,40 +120,16 @@ export default nodeHandler(async function handler(request: Request) {
           return json({ error: 'Somente supervisao@sonax.net.br pode excluir agentes.' }, 403);
         }
 
-        const body = await readJson(request);
         const id = String(body?.id || '').trim();
         if (!id) return json({ error: 'Agente obrigatório.' }, 400);
-
-        const { data: agente, error: agenteError } = await supabase
-          .from('usuarios')
-          .select('id, auth_user_id, nome, role')
-          .eq('id', id)
-          .eq('role', 'agente')
-          .maybeSingle();
-        if (agenteError) return json({ error: 'Não foi possível consultar o agente.', details: agenteError.message }, 500);
+        const agente = usuarios.find((u) => u.id === id && u.role === 'agente');
         if (!agente) return json({ error: 'Agente não encontrado.' }, 404);
 
-        const { error: deleteProfileError } = await supabase.from('usuarios').delete().eq('id', id).eq('role', 'agente');
-        if (deleteProfileError) {
-          return json({ error: 'Não foi possível excluir o perfil do agente.', details: deleteProfileError.message }, 500);
-        }
-
-        // Remove também o histórico de acessos e confirmações do agente na planilha.
-        const uid = String(agente.auth_user_id || agente.id);
+        await deleteRows('usuarios', (row) => row.id === id && row.role === 'agente');
+        // Remove também o histórico de acessos e confirmações do agente.
+        const uid = userUid(agente);
         await deleteRows('agente_acessos', (row) => row.usuario_id === uid);
         await deleteRows('recados_leituras', (row) => row.usuario_id === uid);
-
-        if (agente.auth_user_id) {
-          const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(String(agente.auth_user_id));
-          if (deleteAuthError) {
-            return json({
-              success: true,
-              warning: 'O perfil foi excluído, mas o usuário do Supabase Auth não pôde ser removido automaticamente.',
-              details: deleteAuthError.message,
-            });
-          }
-        }
-
         return json({ success: true });
       }
 
@@ -212,26 +138,21 @@ export default nodeHandler(async function handler(request: Request) {
 
     // -----------------------------------------------------------------------
     // DASHBOARD - somente supervisão
-    // Agentes vêm do Supabase; acessos, recados e confirmações vêm da planilha.
-    // -----------------------------------------------------------------------
+        // -----------------------------------------------------------------------
     if (action === 'dashboard') {
       if (request.method !== 'GET') return json({ error: 'Método não permitido' }, 405, { Allow: 'GET' });
       const hoje = url.searchParams.get('data') || hojeSaoPaulo();
 
-      const agentesResult = await supabase
-        .from('usuarios')
-        .select('id, auth_user_id, login, nome, ramal, nicho_agente, turno')
-        .eq('role', 'agente')
-        .eq('ativo', true)
-        .order('nome');
-      if (agentesResult.error) return json({ error: 'Não foi possível montar o dashboard.', details: agentesResult.error.message }, 500);
-
-      const [acessosRows, recadosRows, leiturasRows] = await Promise.all([
+      const [usuariosRows, acessosRows, recadosRows, leiturasRows] = await Promise.all([
+        listRows('usuarios'),
         listRows('agente_acessos'),
         listRows('recados'),
         listRows('recados_leituras'),
       ]);
-      const agentes = agentesResult.data || [];
+      const agentes = usuariosRows
+        .filter((u) => u.role === 'agente' && parseBool(u.ativo, true))
+        .map((u) => ({ id: u.id, auth_user_id: u.auth_user_id, login: u.login, nome: u.nome, ramal: u.ramal, nicho_agente: u.nicho_agente, turno: u.turno }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const acessos = acessosRows.filter((a) => a.data_acesso.slice(0, 10) === hoje);
       const recados = recadosRows.map((row) => ({ ...mapRecado(row), updated_at: row.updated_at })).filter((r) => recadoVigente(r, hoje));
       const recadoIds = new Set(recados.map((r) => String(r.id)));
@@ -245,7 +166,7 @@ export default nodeHandler(async function handler(request: Request) {
       }
 
       const statusAgentes = agentes.map((ag: any) => {
-        const uid = String(ag.auth_user_id || ag.id);
+        const uid = userUid(ag);
         const pendentes = recados.filter((rec) => !leituras.some((l) =>
           String(l.usuario_id) === uid &&
           String(l.recado_id) === String(rec.id) &&

@@ -92,6 +92,7 @@ if (!substituir) {
 for (const [tabela, arquivo] of encontrados) {
   const linhas = parseCsv(readFileSync(arquivo!, 'utf8'));
   let logosRemovidas = 0;
+  let semSenha = 0;
   const registros = linhas.map((linha) => {
     const registro: Record<string, unknown> = {};
     for (const coluna of TABLES[tabela]) {
@@ -103,6 +104,7 @@ for (const [tabela, arquivo] of encontrados) {
       registro.data_fim = linha.data_fim || linha.data_recado;
       registro.data_recado = registro.data_inicio;
     }
+    if (tabela === 'usuarios' && !registro.password_hash) semSenha++;
     if (tabela === 'empresas' && String(registro.logo_url || '').length > 49000) {
       registro.logo_url = '';
       logosRemovidas++;
@@ -111,6 +113,9 @@ for (const [tabela, arquivo] of encontrados) {
   });
   await replaceAllRows(tabela, registros);
   console.log(`✓ ${tabela}: ${registros.length} linha(s) importada(s) de ${path.basename(arquivo!)}`);
+  if (semSenha) {
+    console.warn(`  ! ${semSenha} usuário(s) sem senha (o CSV não tinha a coluna password_hash). Defina com: npm run senha -- <login> <nova senha>`);
+  }
   if (logosRemovidas) {
     console.warn(`  ! ${logosRemovidas} logo(s) eram grandes demais para a planilha e ficaram em branco. Envie de novo pelo portal.`);
   }
