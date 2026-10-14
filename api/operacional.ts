@@ -1,4 +1,5 @@
-import { authOrResponse, getSupabase, json, nodeHandler, readJson, serverError } from './_core.js';
+import { authOrResponse, getSupabase, json, mapRecado, nodeHandler, readJson, recadoVigente, serverError, sortRecados } from './_core.js';
+import { deleteRows, insertRow, listRows, newId, nowIso, sameInstant } from './_sheets.js';
 
 function normalizeLogin(value: string) {
   return value.trim().replace(/\s+/g, ' ');
@@ -187,6 +188,11 @@ export default nodeHandler(async function handler(request: Request) {
           return json({ error: 'Não foi possível excluir o perfil do agente.', details: deleteProfileError.message }, 500);
         }
 
+        // Remove também o histórico de acessos e confirmações do agente na planilha.
+        const uid = String(agente.auth_user_id || agente.id);
+        await deleteRows('agente_acessos', (row) => row.usuario_id === uid);
+        await deleteRows('recados_leituras', (row) => row.usuario_id === uid);
+
         if (agente.auth_user_id) {
           const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(String(agente.auth_user_id));
           if (deleteAuthError) {
@@ -206,35 +212,32 @@ export default nodeHandler(async function handler(request: Request) {
 
     // -----------------------------------------------------------------------
     // DASHBOARD - somente supervisão
+    // Agentes vêm do Supabase; acessos, recados e confirmações vêm da planilha.
     // -----------------------------------------------------------------------
     if (action === 'dashboard') {
       if (request.method !== 'GET') return json({ error: 'Método não permitido' }, 405, { Allow: 'GET' });
       const hoje = url.searchParams.get('data') || hojeSaoPaulo();
 
-      const [agentesResult, acessosResult, recadosResult] = await Promise.all([
-        supabase.from('usuarios').select('id, auth_user_id, login, nome, ramal, nicho_agente, turno').eq('role', 'agente').eq('ativo', true).order('nome'),
-        supabase.from('agente_acessos').select('usuario_id, login_em').eq('data_acesso', hoje),
-        supabase.from('recados').select('id, empresa_id, empresa_nome, mensagem, data_inicio, data_fim, updated_at').lte('data_inicio', hoje).gte('data_fim', hoje),
+      const agentesResult = await supabase
+        .from('usuarios')
+        .select('id, auth_user_id, login, nome, ramal, nicho_agente, turno')
+        .eq('role', 'agente')
+        .eq('ativo', true)
+        .order('nome');
+      if (agentesResult.error) return json({ error: 'Não foi possível montar o dashboard.', details: agentesResult.error.message }, 500);
+
+      const [acessosRows, recadosRows, leiturasRows] = await Promise.all([
+        listRows('agente_acessos'),
+        listRows('recados'),
+        listRows('recados_leituras'),
       ]);
-
-      const firstError = agentesResult.error || acessosResult.error || recadosResult.error;
-      if (firstError) return json({ error: 'Não foi possível montar o dashboard.', details: firstError.message }, 500);
-
       const agentes = agentesResult.data || [];
-      const acessos = acessosResult.data || [];
-      const recados = recadosResult.data || [];
-      const recadoIds = recados.map((r: any) => r.id);
-      let leituras: any[] = [];
-      if (recadoIds.length) {
-        const { data, error } = await supabase
-          .from('recados_leituras')
-          .select('recado_id, usuario_id, recado_updated_at, confirmado_em, tipo')
-          .in('recado_id', recadoIds);
-        if (error) return json({ error: 'Não foi possível consultar confirmações.', details: error.message }, 500);
-        leituras = data || [];
-      }
+      const acessos = acessosRows.filter((a) => a.data_acesso.slice(0, 10) === hoje);
+      const recados = recadosRows.map((row) => ({ ...mapRecado(row), updated_at: row.updated_at })).filter((r) => recadoVigente(r, hoje));
+      const recadoIds = new Set(recados.map((r) => String(r.id)));
+      const leituras = leiturasRows.filter((l) => recadoIds.has(l.recado_id));
 
-      const entrou = new Set(acessos.map((a: any) => String(a.usuario_id)));
+      const entrou = new Set(acessos.map((a) => String(a.usuario_id)));
       const acessosPorUsuario = new Map<string, string>();
       for (const a of acessos) {
         const prev = acessosPorUsuario.get(String(a.usuario_id));
@@ -243,10 +246,10 @@ export default nodeHandler(async function handler(request: Request) {
 
       const statusAgentes = agentes.map((ag: any) => {
         const uid = String(ag.auth_user_id || ag.id);
-        const pendentes = recados.filter((rec: any) => !leituras.some((l: any) =>
+        const pendentes = recados.filter((rec) => !leituras.some((l) =>
           String(l.usuario_id) === uid &&
           String(l.recado_id) === String(rec.id) &&
-          new Date(l.recado_updated_at).getTime() === new Date(rec.updated_at).getTime(),
+          sameInstant(l.recado_updated_at, rec.updated_at),
         ));
         return {
           ...ag,
@@ -274,34 +277,17 @@ export default nodeHandler(async function handler(request: Request) {
       if (request.method === 'GET') {
         const empresaId = url.searchParams.get('empresa_id');
         const hoje = url.searchParams.get('data') || hojeSaoPaulo();
-        let query = supabase
-          .from('recados')
-          .select('*')
-          .lte('data_inicio', hoje)
-          .gte('data_fim', hoje)
-          .order('data_inicio', { ascending: false })
-          .order('created_at', { ascending: false });
-        if (empresaId) query = query.eq('empresa_id', empresaId);
+        const [recadosRows, leiturasRows] = await Promise.all([listRows('recados'), listRows('recados_leituras')]);
+        let recados = recadosRows.map((row) => ({ ...mapRecado(row), updated_at: row.updated_at })).filter((r) => recadoVigente(r, hoje));
+        if (empresaId) recados = recados.filter((r) => r.empresa_id === empresaId);
+        recados = sortRecados(recados);
+        const leituras = leiturasRows
+          .filter((l) => l.usuario_id === userId)
+          .sort((a, b) => String(b.confirmado_em).localeCompare(String(a.confirmado_em)));
 
-        const { data: recados, error } = await query;
-        if (error) return json({ error: 'Não foi possível consultar os recados vigentes.', details: error.message }, 500);
-
-        const ids = (recados || []).map((r: any) => r.id);
-        let leituras: any[] = [];
-        if (ids.length) {
-          const { data, error: leituraError } = await supabase
-            .from('recados_leituras')
-            .select('*')
-            .eq('usuario_id', userId)
-            .in('recado_id', ids)
-            .order('confirmado_em', { ascending: false });
-          if (leituraError) return json({ error: 'Não foi possível consultar as leituras.', details: leituraError.message }, 500);
-          leituras = data || [];
-        }
-
-        return json((recados || []).map((rec: any) => {
-          const history = leituras.filter((l: any) => String(l.recado_id) === String(rec.id));
-          const atual = history.find((l: any) => new Date(l.recado_updated_at).getTime() === new Date(rec.updated_at).getTime());
+        return json(recados.map((rec) => {
+          const history = leituras.filter((l) => String(l.recado_id) === String(rec.id));
+          const atual = history.find((l) => sameInstant(l.recado_updated_at, rec.updated_at));
           return {
             id: rec.id,
             empresa_id: rec.empresa_id,
@@ -312,8 +298,8 @@ export default nodeHandler(async function handler(request: Request) {
             mensagem: rec.mensagem,
             criado_por: rec.criado_por,
             criado_por_email: rec.criado_por_email,
-            createdAt: rec.created_at,
-            updatedAt: rec.updated_at,
+            createdAt: rec.createdAt,
+            updatedAt: rec.updatedAt,
             lido: Boolean(atual),
             teve_leitura_anterior: history.length > 0,
             confirmacao_tipo: atual?.tipo || null,
@@ -328,24 +314,22 @@ export default nodeHandler(async function handler(request: Request) {
         const recadoId = String(body?.recado_id || '');
         if (!recadoId) return json({ error: 'Recado obrigatório.' }, 400);
 
-        const { data: recado, error } = await supabase.from('recados').select('id, updated_at').eq('id', recadoId).maybeSingle();
-        if (error || !recado) return json({ error: 'Recado não encontrado.' }, 404);
+        const recado = (await listRows('recados')).find((r) => r.id === recadoId);
+        if (!recado) return json({ error: 'Recado não encontrado.' }, 404);
 
-        const { data: history } = await supabase
-          .from('recados_leituras')
-          .select('id')
-          .eq('usuario_id', userId)
-          .eq('recado_id', recadoId)
-          .limit(1);
-        const tipo = history?.length ? 'atualizacao' : 'lido';
-        const payload = { recado_id: recadoId, usuario_id: userId, recado_updated_at: recado.updated_at, tipo };
-        const { data, error: saveError } = await supabase
-          .from('recados_leituras')
-          .upsert(payload, { onConflict: 'recado_id,usuario_id,recado_updated_at' })
-          .select('*')
-          .single();
-        if (saveError) return json({ error: 'Não foi possível confirmar a leitura.', details: saveError.message }, 500);
-        return json(data, 201);
+        const history = (await listRows('recados_leituras')).filter((l) => l.usuario_id === userId && l.recado_id === recadoId);
+        // Mesma regra do antigo "upsert": uma confirmação por agente e por versão do recado.
+        const existente = history.find((l) => sameInstant(l.recado_updated_at, recado.updated_at));
+        if (existente) return json(existente, 201);
+        const saved = await insertRow('recados_leituras', {
+          id: newId('lei'),
+          recado_id: recadoId,
+          usuario_id: userId,
+          recado_updated_at: recado.updated_at,
+          tipo: history.length ? 'atualizacao' : 'lido',
+          confirmado_em: nowIso(),
+        });
+        return json(saved, 201);
       }
 
       return json({ error: 'Método não permitido' }, 405, { Allow: 'GET, POST' });

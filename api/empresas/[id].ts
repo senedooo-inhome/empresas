@@ -1,16 +1,15 @@
-import { authOrResponse, getSupabase, json, mapEmpresa, nodeHandler, normalizeLinksSistema, pathSegment, readJson, serverError } from '../_core.js';
+import { authOrResponse, json, mapEmpresa, nodeHandler, normalizeLinksSistema, pathSegment, readJson, serverError } from '../_core.js';
+import { findRow, listRows, nowIso, updateRow } from '../_sheets.js';
 
 export default nodeHandler(async function handler(request: Request) {
     try {
       const id = pathSegment(request, '/api/empresas/');
       if (!id) return json({ error: 'ID da empresa não informado.' }, 400);
-      const supabase = getSupabase();
 
       if (request.method === 'GET') {
         const auth = authOrResponse(request);
         if (auth.response) return auth.response;
-        const { data, error } = await supabase.from('empresas').select('*').eq('id', id).maybeSingle();
-        if (error) return json({ error: 'Não foi possível consultar a empresa.', details: error.message }, 500);
+        const data = await findRow('empresas', id);
         if (!data) return json({ error: 'Empresa não encontrada' }, 404);
         return json(mapEmpresa(data));
       }
@@ -29,8 +28,8 @@ export default nodeHandler(async function handler(request: Request) {
           changes.links_sistema = linksSistema;
           changes.link_sistema = linksSistema[0].url;
         }
-        const { data, error } = await supabase.from('empresas').update(changes).eq('id', id).select('*').maybeSingle();
-        if (error) return json({ error: 'Não foi possível atualizar a empresa.', details: error.message }, 500);
+        changes.updated_at = nowIso();
+        const data = await updateRow('empresas', id, changes);
         if (!data) return json({ error: 'Empresa não encontrada' }, 404);
         return json(mapEmpresa(data));
       }
@@ -38,11 +37,11 @@ export default nodeHandler(async function handler(request: Request) {
       if (request.method === 'DELETE') {
         const auth = authOrResponse(request, true);
         if (auth.response) return auth.response;
-        const { data: empresa, error } = await supabase.from('empresas').update({ ativo: false }).eq('id', id).select('*').maybeSingle();
-        if (error) return json({ error: 'Não foi possível inativar a empresa.', details: error.message }, 500);
+        // Exclusão lógica: a empresa é inativada para preservar o histórico de recados.
+        const empresa = await updateRow('empresas', id, { ativo: false, updated_at: nowIso() });
         if (!empresa) return json({ error: 'Empresa não encontrada' }, 404);
-        const { count } = await supabase.from('recados').select('id', { count: 'exact', head: true }).eq('empresa_id', id);
-        return json({ inativada: true, totalRecadosVinculados: count || 0, message: 'Empresa inativada com sucesso.' });
+        const count = (await listRows('recados')).filter((recado) => recado.empresa_id === id).length;
+        return json({ inativada: true, totalRecadosVinculados: count, message: 'Empresa inativada com sucesso.' });
       }
 
       return json({ error: 'Método não permitido' }, 405, { Allow: 'GET, PUT, DELETE' });

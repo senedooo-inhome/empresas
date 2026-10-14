@@ -183,7 +183,7 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
 
     try {
       if (logoMode === 'upload' && selectedFile) {
-        // Perform upload to Firebase Storage
+        // Reduz a imagem para caber em uma célula da planilha
         const tempId = empresaToEdit?.id || `empresa_${Date.now()}`;
         finalLogoUrl = await uploadEmpresaLogo(tempId, selectedFile);
       }
@@ -201,7 +201,7 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('[EmpresaForm] Erro ao salvar:', err);
-      setErrorMsg('Não foi possível salvar a empresa. Tente novamente.');
+      setErrorMsg(err?.message || 'Não foi possível salvar a empresa. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -469,7 +469,7 @@ export const EmpresaFormModal: React.FC<EmpresaFormModalProps> = ({
                       <span>{selectedFile ? selectedFile.name : 'Selecionar arquivo do computador'}</span>
                     </button>
                     <p className="text-[10px] text-slate-500 mt-1">
-                      PNG, JPG ou WEBP de até 5 MB (será armazenado no Firebase Storage).
+                      PNG, JPG ou WEBP de até 5 MB (será reduzido e salvo na planilha).
                     </p>
                   </div>
                 )}

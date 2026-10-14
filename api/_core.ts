@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
+import { normalizeDate, parseBool, parseJson } from './_sheets.js';
 
 export type Role = 'supervisao' | 'agente';
 export type AuthUser = { id: string; email: string; nome: string; role: Role; login?: string };
@@ -154,6 +155,10 @@ export function serverError(error: any, context: string) {
   if (missing?.length) {
     return json({ error: 'Configuração do servidor incompleta.', missing }, 500);
   }
+  // Erros do Google Sheets trazem uma mensagem que ajuda a corrigir a configuração.
+  if (error?.publicMessage) {
+    return json({ error: error.publicMessage }, Number(error.status) || 500);
+  }
   return json({ error: 'Erro interno do servidor.' }, 500);
 }
 
@@ -170,12 +175,12 @@ export function pathSegment(request: Request, marker: string): string {
 
 export function mapEmpresa(row: any) {
   if (!row) return row;
-  const linksSistema = normalizeLinksSistema(row.links_sistema, row.link_sistema);
+  const linksSistema = normalizeLinksSistema(parseJson(row.links_sistema, []), row.link_sistema);
   return {
     id: row.id, nome: row.nome, nicho: row.nicho, segmento: row.segmento,
     link_sistema: linksSistema[0]?.url || row.link_sistema || '', links_sistema: linksSistema,
     resumo: row.resumo, logo_url: row.logo_url,
-    ativo: row.ativo, createdAt: row.created_at, updatedAt: row.updated_at,
+    ativo: parseBool(row.ativo, true), createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
 
@@ -204,10 +209,22 @@ export function normalizeLinksSistema(value: unknown, legacyLink = '') {
 
 export function mapRecado(row: any) {
   if (!row) return row;
+  const dataInicio = normalizeDate(row.data_inicio || row.data_recado);
   return {
     id: row.id, empresa_id: row.empresa_id, empresa_nome: row.empresa_nome,
-    data_recado: row.data_inicio || row.data_recado, data_inicio: row.data_inicio || row.data_recado, data_fim: row.data_fim || row.data_recado,
+    data_recado: dataInicio, data_inicio: dataInicio, data_fim: normalizeDate(row.data_fim || row.data_recado),
     mensagem: row.mensagem, criado_por: row.criado_por,
     criado_por_email: row.criado_por_email, createdAt: row.created_at, updatedAt: row.updated_at,
   };
+}
+
+/** Ordena recados como antes: data inicial mais recente primeiro, depois criação mais recente. */
+export function sortRecados<T extends { data_inicio: string; createdAt?: string }>(recados: T[]): T[] {
+  return [...recados].sort((a, b) =>
+    String(b.data_inicio).localeCompare(String(a.data_inicio)) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+/** Recado vigente na data (AAAA-MM-DD): data_inicio <= data <= data_fim. */
+export function recadoVigente(recado: { data_inicio: string; data_fim: string }, data: string) {
+  return recado.data_inicio <= data && recado.data_fim >= data;
 }

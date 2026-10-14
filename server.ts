@@ -23,7 +23,7 @@ async function startServer() {
     res.json({
       status: 'ok',
       service: 'Sonax In Home — Portal Operacional',
-      database: 'Local backend data store',
+      database: 'Google Sheets',
       auth: 'Supabase Authentication + HttpOnly Cookie',
       fusoHorario: 'America/Sao_Paulo',
       timestamp: new Date().toISOString(),

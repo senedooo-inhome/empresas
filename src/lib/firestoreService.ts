@@ -279,15 +279,38 @@ export async function deleteRecado(id: string): Promise<void> {
 // 4. STORAGE DE LOGOS
 // ==========================================
 export async function uploadEmpresaLogo(empresaId: string, file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
+  // A logo é guardada dentro da planilha (texto em base64). Cada célula do
+  // Google Sheets aceita no máximo 50.000 caracteres, então a imagem é
+  // reduzida antes de salvar.
+  const original = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      // Retorna data URL para armazenamento direto da logo
-      resolve(reader.result as string);
-    };
+    reader.onload = () => resolve(reader.result as string);
     reader.onerror = (err) => reject(err);
     reader.readAsDataURL(file);
   });
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Não foi possível ler a imagem da logo.'));
+    img.src = original;
+  });
+
+  const LIMITE = 45000;
+  for (const tamanho of [256, 192, 128, 96, 64]) {
+    const escala = Math.min(1, tamanho / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * escala));
+    canvas.height = Math.max(1, Math.round(image.height * escala));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) break;
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    for (const qualidade of [0.9, 0.75, 0.6]) {
+      const dataUrl = canvas.toDataURL('image/webp', qualidade);
+      if (dataUrl.length <= LIMITE) return dataUrl;
+    }
+  }
+  throw new Error('A imagem da logo é grande demais. Use uma imagem menor ou informe a URL da logo.');
 }
 
 // ==========================================

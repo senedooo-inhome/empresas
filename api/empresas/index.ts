@@ -1,18 +1,17 @@
-import { authOrResponse, getSupabase, json, mapEmpresa, nodeHandler, normalizeLinksSistema, readJson, serverError } from '../_core.js';
+import { authOrResponse, json, mapEmpresa, nodeHandler, normalizeLinksSistema, readJson, serverError } from '../_core.js';
+import { insertRow, listRows, newId, nowIso } from '../_sheets.js';
 
 export default nodeHandler(async function handler(request: Request) {
     try {
-      const supabase = getSupabase();
       const url = new URL(request.url);
 
       if (request.method === 'GET') {
         const auth = authOrResponse(request);
         if (auth.response) return auth.response;
-        let query = supabase.from('empresas').select('*').order('nome', { ascending: true });
-        if (url.searchParams.get('ativas') === 'true') query = query.eq('ativo', true);
-        const { data, error } = await query;
-        if (error) return json({ error: 'Não foi possível consultar as empresas.', details: error.message }, 500);
-        return json((data || []).map(mapEmpresa));
+        let empresas = (await listRows('empresas')).map(mapEmpresa);
+        if (url.searchParams.get('ativas') === 'true') empresas = empresas.filter((empresa) => empresa.ativo);
+        empresas.sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+        return json(empresas);
       }
 
       if (request.method === 'POST') {
@@ -20,7 +19,9 @@ export default nodeHandler(async function handler(request: Request) {
         if (auth.response) return auth.response;
         const body = await readJson(request);
         const linksSistema = normalizeLinksSistema(body?.links_sistema, body?.link_sistema);
+        const now = nowIso();
         const payload = {
+          id: newId('emp'),
           nome: String(body?.nome || '').trim(),
           nicho: String(body?.nicho || '').trim(),
           segmento: String(body?.segmento || '').trim(),
@@ -29,13 +30,14 @@ export default nodeHandler(async function handler(request: Request) {
           resumo: String(body?.resumo || '').trim(),
           logo_url: String(body?.logo_url || '').trim(),
           ativo: body?.ativo ?? true,
+          created_at: now,
+          updated_at: now,
         };
         if (!payload.nome || !payload.nicho || !payload.segmento || !payload.link_sistema || !payload.resumo) {
           return json({ error: 'Preencha todos os campos obrigatórios da empresa.' }, 400);
         }
-        const { data, error } = await supabase.from('empresas').insert(payload).select('*').single();
-        if (error) return json({ error: 'Não foi possível salvar a empresa.', details: error.message }, 500);
-        return json(mapEmpresa(data), 201);
+        const saved = await insertRow('empresas', payload);
+        return json(mapEmpresa(saved), 201);
       }
 
       return json({ error: 'Método não permitido' }, 405, { Allow: 'GET, POST' });

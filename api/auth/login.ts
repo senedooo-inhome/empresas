@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { getEnv, getSupabase, getSupabaseAuth, json, nodeHandler, readJson, serverError, type AuthUser } from '../_core.js';
+import { insertRow, newId, nowIso } from '../_sheets.js';
 
 export default nodeHandler(async function handler(request: Request) {
   if (request.method !== 'POST') return json({ error: 'Método não permitido' }, 405, { Allow: 'POST' });
@@ -61,8 +62,12 @@ export default nodeHandler(async function handler(request: Request) {
 
     if (profile.role === 'agente') {
       const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-      const { error: accessError } = await supabase.from('agente_acessos').insert({ usuario_id: authData.user.id, data_acesso: hoje });
-      if (accessError) console.warn('[auth/login] Não foi possível registrar acesso do agente:', accessError.message);
+      try {
+        await insertRow('agente_acessos', { id: newId('acc'), usuario_id: authData.user.id, data_acesso: hoje, login_em: nowIso() });
+      } catch (accessError) {
+        // O login não é bloqueado se a planilha estiver indisponível.
+        console.warn('[auth/login] Não foi possível registrar acesso do agente:', (accessError as Error).message);
+      }
     }
 
     const token = jwt.sign(user, jwtSecret, { expiresIn: '8h' });
