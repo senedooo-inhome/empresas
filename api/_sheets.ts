@@ -54,6 +54,18 @@ function getConfig(): SheetsConfig {
   let clientEmail = String(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim();
   let privateKey = String(process.env.GOOGLE_PRIVATE_KEY || '');
 
+  // Alternativa (mais fácil na Vercel): o conteúdo inteiro do arquivo JSON numa variável só.
+  const keyJson = String(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim();
+  if ((!clientEmail || !privateKey) && keyJson) {
+    try {
+      const parsed = JSON.parse(keyJson);
+      clientEmail = clientEmail || parsed.client_email || '';
+      privateKey = privateKey || parsed.private_key || '';
+    } catch {
+      throw new SheetsError('GOOGLE_SERVICE_ACCOUNT_JSON não é um JSON válido. Cole o conteúdo inteiro do arquivo baixado do Google, de { até }.');
+    }
+  }
+
   // Alternativa para uso local: caminho do arquivo JSON baixado do Google Cloud.
   const keyFile = String(process.env.GOOGLE_SERVICE_ACCOUNT_FILE || '').trim();
   if ((!clientEmail || !privateKey) && keyFile && existsSync(keyFile)) {
@@ -62,8 +74,8 @@ function getConfig(): SheetsConfig {
     privateKey = privateKey || parsed.private_key || '';
   }
 
-  // Na Vercel/.env a chave costuma vir com "\n" literais e, às vezes, entre aspas.
-  privateKey = privateKey.trim().replace(/^"|"$/g, '').replace(/\\n/g, '\n');
+  privateKey = normalizePrivateKey(privateKey);
+  clientEmail = clientEmail.replace(/^["']|["'],?$/g, '').trim();
 
   const missing: string[] = [];
   if (!spreadsheetId) missing.push('GOOGLE_SHEETS_ID');
@@ -77,21 +89,45 @@ function getConfig(): SheetsConfig {
   return { spreadsheetId, clientEmail, privateKey };
 }
 
+/**
+ * Aceita a chave colada de vários jeitos: com "\n" literais ou quebras reais,
+ * entre aspas, com vírgula no fim (copiada do JSON) ou com "\r" do Windows.
+ */
+function normalizePrivateKey(raw: string): string {
+  let key = raw.trim().replace(/,$/, '').trim().replace(/^["']|["']$/g, '');
+  key = key.replace(/\\r/g, '').replace(/\\n/g, '\n').replace(/\r/g, '');
+  const match = key.match(/-----BEGIN PRIVATE KEY-----([\s\S]*?)-----END PRIVATE KEY-----/);
+  if (!match) return key;
+  const body = match[1].replace(/\s+/g, '');
+  const lines = body.match(/.{1,64}/g) || [];
+  return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----\n`;
+}
+
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 async function getAccessToken(config: SheetsConfig): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
   const now = Math.floor(Date.now() / 1000);
-  const assertion = jwt.sign(
-    { iss: config.clientEmail, scope: 'https://www.googleapis.com/auth/spreadsheets', aud: TOKEN_URL, iat: now, exp: now + 3600 },
-    config.privateKey,
-    { algorithm: 'RS256' },
-  );
-  const response = await fetch(TOKEN_URL, {
+  let assertion: string;
+  try {
+    assertion = jwt.sign(
+      { iss: config.clientEmail, scope: 'https://www.googleapis.com/auth/spreadsheets', aud: TOKEN_URL, iat: now, exp: now + 3600 },
+      config.privateKey,
+      { algorithm: 'RS256' },
+    );
+  } catch (error) {
+    throw new SheetsError(`A GOOGLE_PRIVATE_KEY está em um formato inválido (${(error as Error).message}). Cole o valor de "private_key" do arquivo JSON, de -----BEGIN PRIVATE KEY----- até -----END PRIVATE KEY-----.`);
+  }
+  let response: Response;
+  try {
+    response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }),
-  });
+      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }),
+    });
+  } catch (error) {
+    throw new SheetsError(`Não foi possível conectar ao Google (${(error as Error).message}).`);
+  }
   const data: any = await response.json().catch(() => ({}));
   if (!response.ok || !data.access_token) {
     throw new SheetsError(`Não foi possível autenticar no Google (${data.error_description || data.error || response.status}). Confira GOOGLE_SERVICE_ACCOUNT_EMAIL e GOOGLE_PRIVATE_KEY.`);

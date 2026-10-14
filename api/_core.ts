@@ -36,7 +36,7 @@ function toWebRequest(request: NodeRequest): Request {
 
   if (method !== 'GET' && method !== 'HEAD' && request.body !== undefined) {
     if (typeof request.body === 'string' || request.body instanceof Uint8Array) {
-      init.body = request.body;
+      init.body = request.body as BodyInit;
     } else {
       init.body = JSON.stringify(request.body);
       if (!headers.has('content-type')) headers.set('content-type', 'application/json');
@@ -153,7 +153,8 @@ export function serverError(error: any, context: string) {
   if (error?.publicMessage) {
     return json({ error: error.publicMessage }, Number(error.status) || 500);
   }
-  return json({ error: 'Erro interno do servidor.' }, 500);
+  // Mostra o motivo resumido para facilitar o diagnóstico (sistema de uso interno).
+  return json({ error: 'Erro interno do servidor.', details: String(error?.message || error).slice(0, 300) }, 500);
 }
 
 export async function readJson(request: Request): Promise<any> {
